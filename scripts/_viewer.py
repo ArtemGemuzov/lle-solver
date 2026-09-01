@@ -4,7 +4,7 @@ from pathlib import Path
 import numpy as np
 
 from lle_solver.grid import PeriodicGrid
-from lle_solver.types import State, Time
+from lle_solver.types import State, StepSize, Time
 
 from _common import count_peaks
 
@@ -15,29 +15,31 @@ class FrameRecorder:
     def __init__(
             self,
             grid: PeriodicGrid,
-            interval: Time,
+            time_step: StepSize,
+            frame_interval: Time,
             field_downsample: int = 4,
             spectrum_downsample: int = 4,
     ) -> None:
-        self.interval = interval
+        self.time_step = time_step
+        self.steps_per_frame = max(1, round(frame_interval / time_step))
         self.field_downsample = field_downsample
         self.spectrum_downsample = spectrum_downsample
         self.theta = grid.theta[::field_downsample]
         self.modes = np.fft.fftshift(grid.wavenumbers)[::spectrum_downsample]
         self.frames: list[dict] = []
-        self._last_time = -np.inf
+        self._next_step = 0
 
-    def record(self, state: State, time: Time, detuning: float, phase: str) -> None:
-        if time - self._last_time < self.interval:
+    def record(self, state: State, step: int, detuning: float, phase: str) -> None:
+        if step < self._next_step:
             return
-        self._last_time = time
+        self._next_step = step + self.steps_per_frame
 
         intensity = np.abs(state) ** 2
         spectrum = 20 * np.log10(np.abs(np.fft.fftshift(np.fft.fft(state))) + 1e-12)
         spectrum -= spectrum.max()
 
         self.frames.append({
-            "tau": round(float(time), 4),
+            "tau": round(step * self.time_step, 4),
             "zeta0": round(float(detuning), 4),
             "P": round(float(intensity.mean()), 5),
             "N": count_peaks(state),

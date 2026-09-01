@@ -1,6 +1,5 @@
 import numpy as np
 
-from lle_solver.evolution import evolve
 from lle_solver.grid import PeriodicGrid
 from lle_solver.integrators import rk4_step
 from lle_solver.lle import LugiatoLefever
@@ -52,19 +51,19 @@ segments.append((detuning_end, round(check_time / time_step), "check"))
 rng = np.random.RandomState(SEED)
 field = noise_amplitude * np.exp(2j * np.pi * rng.rand(num_points))
 
-recorder = FrameRecorder(grid, frame_interval)
-elapsed = 0.0
+recorder = FrameRecorder(grid, time_step, frame_interval)
+elapsed_steps = 0
 peak_power = []
 
 for detuning, num_steps, phase in segments:
     scheme = build_scheme(detuning)
-    for step, time, field in evolve(scheme, field, num_steps, time_step):
-        if step == 0:
-            continue
-        recorder.record(field, elapsed + time, detuning, phase)
+    for done in range(0, num_steps, recorder.steps_per_frame):
+        chunk = min(recorder.steps_per_frame, num_steps - done)
+        field = scheme.advance(field, chunk, time_step)
+        recorder.record(field, elapsed_steps + done + chunk, detuning, phase)
         if phase == "check":
             peak_power.append(np.abs(field).max() ** 2)
-    elapsed += num_steps * time_step
+    elapsed_steps += num_steps
 
 peak_power = np.array(peak_power)
 variation = (peak_power.max() - peak_power.min()) / peak_power.mean()

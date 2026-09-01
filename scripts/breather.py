@@ -35,13 +35,13 @@ scheme = StrangSplitStep(
 field = np.sqrt(2 * detuning) / np.cosh(np.sqrt(detuning) * grid.theta)
 field = field.astype(np.complex128)
 
-recorder = FrameRecorder(grid, frame_interval)
+recorder = FrameRecorder(grid, time_step, frame_interval)
 num_steps = round(time_end / time_step)
 peak_power = np.empty(num_steps + 1)
 
-for step, time, field in evolve(scheme, field, num_steps, time_step):
+for step, _, field in evolve(scheme, field, num_steps, time_step):
     peak_power[step] = np.abs(field).max() ** 2
-    recorder.record(field, time, detuning, "evolution")
+    recorder.record(field, step, detuning, "evolution")
 
 maxima, _ = find_peaks(peak_power[round(transient_time / time_step):])
 period = np.mean(np.diff(maxima)) * time_step if maxima.size > 2 else np.nan
