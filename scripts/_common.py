@@ -2,6 +2,7 @@ from dataclasses import dataclass
 
 import numpy as np
 from numpy.fft import fft
+from scipy.signal import find_peaks
 import matplotlib.pyplot as plt
 from matplotlib.colors import LogNorm
 
@@ -90,3 +91,16 @@ def plot_maps(grid: PeriodicGrid, history: History) -> None:
 
     figure.tight_layout()
     plt.show()
+
+
+def count_peaks(state: State, prominence_fraction: float = 0.25) -> int:
+    intensity = np.abs(state) ** 2
+    background = float(np.median(intensity))
+    span = float(intensity.max()) - background
+    if span < 0.05 * max(background, 1e-6):
+        return 0
+
+    # Тройное повторение возвращает пики, разрезанные границей периода
+    num_points = intensity.size
+    peaks, _ = find_peaks(np.tile(intensity, 3), prominence=prominence_fraction * span)
+    return int(np.count_nonzero((peaks >= num_points) & (peaks < 2 * num_points)))
