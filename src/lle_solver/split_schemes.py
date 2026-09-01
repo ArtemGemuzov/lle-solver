@@ -11,6 +11,13 @@ class SplitScheme(Protocol):
         step_size: StepSize,
     ) -> State: ...
 
+    def advance(
+        self,
+        state: State,
+        num_steps: int,
+        step_size: StepSize,
+    ) -> State: ...
+
 
 class LieTrotterSplitStep:
     def __init__(self, linear_step: Step, nonlinear_step: Step) -> None:
@@ -20,6 +27,11 @@ class LieTrotterSplitStep:
     def step(self, state: State, step_size: StepSize) -> State:
         state = self.linear_step(state, step_size)
         state = self.nonlinear_step(state, step_size)
+        return state
+
+    def advance(self, state: State, num_steps: int, step_size: StepSize) -> State:
+        for _ in range(num_steps):
+            state = self.step(state, step_size)
         return state
 
 
@@ -33,3 +45,14 @@ class StrangSplitStep:
         state = self.nonlinear_step(state, step_size)
         state = self.linear_step(state, step_size / 2.0)
         return state
+
+    def advance(self, state: State, num_steps: int, step_size: StepSize) -> State:
+        if num_steps < 1:
+            return state
+
+        state = self.linear_step(state, step_size / 2.0)
+        state = self.nonlinear_step(state, step_size)
+        for _ in range(num_steps - 1):
+            state = self.linear_step(state, step_size)
+            state = self.nonlinear_step(state, step_size)
+        return self.linear_step(state, step_size / 2.0)
