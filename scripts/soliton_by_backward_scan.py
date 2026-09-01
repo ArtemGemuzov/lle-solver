@@ -22,7 +22,7 @@ capture_hold = 20.0
 
 backward_step = 0.02
 backward_hold = 2.0
-max_backward_steps = 120
+max_backward_steps = 250
 target_solitons = 1
 confirm_hold = 50.0
 settle_time = 100.0
