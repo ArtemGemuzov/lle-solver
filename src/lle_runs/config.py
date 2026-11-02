@@ -40,6 +40,6 @@ def config_from_cli(model: type[C]) -> C:
     parser.add_argument("overrides", nargs="*", metavar="key=value")
     args = parser.parse_args()
     try:
-        return load_config(model, args.parameters, args.overrides)
+        return load_config(model, args.config, args.overrides)
     except (ValueError, OSError, yaml.YAMLError) as error:
         parser.error(str(error))
