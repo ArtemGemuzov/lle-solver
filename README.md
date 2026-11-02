@@ -32,7 +32,7 @@ $$
 ## Установка и запуск
 
 ```bash
-uv sync
+uv sync --locked --extra notebooks
 ```
 ```bash
 uv run scripts/<script-name>.py
