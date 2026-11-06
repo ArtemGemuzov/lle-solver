@@ -6,6 +6,7 @@ import numpy as np
 
 from lle_solver.simulations.gaussian import GaussianConfig
 from lle_solver.simulations.evolution import FieldEvolution
+from lle_solver.simulations.storage import save_evolution
 from lle_solver.grid import PeriodicGrid
 from lle_solver.integrators import rk4_step
 from lle_solver.lle import LugiatoLefever
@@ -50,14 +51,14 @@ def simulate(p: GaussianConfig) -> FieldEvolution:
     return FieldEvolution(
         theta=grid.theta,
         times=np.asarray(steps * dt, dtype=np.float64),
-        fields=fields,
+        values=fields,
     )
 
 
 def main() -> None:
     config = config_from_cli(GaussianConfig)
     with create_run(config, script=__file__) as run:
-        simulate(config).save(run.path)
+        save_evolution(run.path, simulate(config))
     print(f"Run: {run.id}")
 
 
