@@ -9,12 +9,12 @@ from pydantic import BaseModel
 import yaml
 
 from lle_runs.config import C, load_config
-from lle_runs.project import find_project_root
+from lle_runs.project import find_project_root, get_runs_dir
 from lle_runs.git import Git
 
 
 PROJECT_ROOT = find_project_root(Path(__file__))
-RUNS_ROOT = PROJECT_ROOT / "runs"
+RUNS_ROOT = get_runs_dir(Path(__file__))
 
 
 def _now() -> datetime:
