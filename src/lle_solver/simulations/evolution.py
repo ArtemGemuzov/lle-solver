@@ -4,6 +4,7 @@ from typing import Self, overload
 
 import numpy as np
 from numpy.typing import NDArray
+from scipy.ndimage import map_coordinates
 
 
 DEFAULT_TIME_TOLERANCE = 1e-10
@@ -44,6 +45,22 @@ class Field:
     @property
     def intensity(self) -> Intensity:
         return Intensity(self.theta, np.abs(self.values) ** 2)
+
+    def relative_to(self, origin: float) -> Self:
+        """Возвращает то же поле в координатах с началом в origin."""
+        return type(self)(self.theta - origin, self.values)
+
+    def field_at(self, theta: NDArray[np.float64], *, interpolation_order: int = 3) -> Self:
+        """Возвращает поле в точках theta, интерполируя исходную равномерную сетку по кольцу."""
+        _validate_axis(theta)
+        if self.theta.size == 1:
+            return type(self)(theta, np.full(theta.shape, self.values[0], dtype=np.complex128))
+        steps = np.diff(self.theta)
+        if steps[0] == 0 or not np.allclose(steps, steps[0], rtol=1e-10, atol=0):
+            raise ValueError("Для периодической интерполяции нужна равномерная сетка")
+        indices = (theta - self.theta[0]) / steps[0]
+        values = map_coordinates(self.values, indices[None, :], order=interpolation_order, mode="grid-wrap")
+        return type(self)(theta, values)
 
 
 TimeSelection = slice | NDArray[np.bool_]
