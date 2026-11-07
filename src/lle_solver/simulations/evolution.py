@@ -6,6 +6,8 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.ndimage import map_coordinates
 
+from lle_solver.grid import uniform_spacing
+
 
 DEFAULT_TIME_TOLERANCE = 1e-10
 
@@ -55,10 +57,7 @@ class Field:
         _validate_axis(theta)
         if self.theta.size == 1:
             return type(self)(theta, np.full(theta.shape, self.values[0], dtype=np.complex128))
-        steps = np.diff(self.theta)
-        if steps[0] == 0 or not np.allclose(steps, steps[0], rtol=1e-10, atol=0):
-            raise ValueError("Для периодической интерполяции нужна равномерная сетка")
-        indices = (theta - self.theta[0]) / steps[0]
+        indices = (theta - self.theta[0]) / uniform_spacing(self.theta)
         values = map_coordinates(self.values, indices[None, :], order=interpolation_order, mode="grid-wrap")
         return type(self)(theta, values)
 
