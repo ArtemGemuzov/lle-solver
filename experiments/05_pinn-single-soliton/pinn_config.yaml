@@ -1,0 +1,26 @@
+equation:
+  pump_amplitude: 2.0
+  detuning: 3.0
+  beta2: -0.1
+initial:
+  amplitude: 1.6
+  width: 0.32933120784708886
+domain:
+  length: 6.283185307179586
+  time_end: 30.0
+  interior_points: 1024
+  initial_points: 256
+network:
+  hidden_layers: 4
+  hidden_width: 64
+  spatial_harmonics: 4
+training:
+  iterations: 20000
+  learning_rate: 0.001
+  initial_weight: 10.0
+  resample_every: 100
+  log_every: 100
+  seed: 42
+recording:
+  interval: 0.5
+  num_points: 512
