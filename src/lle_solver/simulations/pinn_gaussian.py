@@ -1,5 +1,5 @@
 from math import isclose, pi
-from typing import Self
+from typing import Annotated, Self
 
 from pydantic import Field, model_validator
 
@@ -35,9 +35,17 @@ class ReLoBRaLoConfig(Config):
     lookback_probability: float = Field(default=0.001, ge=0, le=1)
 
 
+class CausalScheduleConfig(Config):
+    epsilons: list[Annotated[float, Field(gt=0)]] = Field(
+        default_factory=lambda: [0.01, 0.1, 1.0, 10.0, 100.0], min_length=2,
+    )
+    threshold: float = Field(default=0.99, gt=0, lt=1)
+
+
 class CausalConfig(Config):
     bands: int = Field(default=4, ge=2)
     epsilon: float = Field(default=1.0, gt=0)
+    schedule: CausalScheduleConfig | None = None
 
 
 class PinnLossConfig(Config):
@@ -71,4 +79,12 @@ class PinnGaussianConfig(Config):
         count = round(time_end / interval)
         if count < 1 or not isclose(time_end, count * interval, rel_tol=0, abs_tol=1e-12):
             raise ValueError("Конечное время должно быть кратно интервалу записи")
+        return self
+
+    @model_validator(mode="after")
+    def validate_schedule(self) -> Self:
+        causal = self.loss.causal
+        if causal is not None and causal.schedule is not None:
+            if self.training.iterations < len(causal.schedule.epsilons):
+                raise ValueError("Для каждой стадии причинного взвешивания нужен хотя бы один шаг Adam")
         return self

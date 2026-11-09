@@ -1,10 +1,12 @@
 """Адаптивное взвешивание потерь PINN на бэкенде PyTorch."""
 
+from typing import NamedTuple
+
 import deepxde as dde
 import numpy as np
 import torch
 
-from lle_solver.simulations.pinn_gaussian import CausalConfig, ReLoBRaLoConfig
+from lle_solver.simulations.pinn_gaussian import CausalConfig, CausalScheduleConfig, ReLoBRaLoConfig
 
 
 class ReLoBRaLoTimePDE(dde.data.TimePDE):
@@ -65,6 +67,7 @@ class CausalTimePDE(dde.data.TimePDE):
     def __init__(self, *args, causal: CausalConfig, time_end: float, **kwargs):
         super().__init__(*args, **kwargs)
         self.causal = causal
+        self.epsilon = causal.epsilon if causal.schedule is None else causal.schedule.epsilons[0]
         self.time_end = time_end
         self._weight_history = []
         self.update_pending = False
@@ -89,7 +92,7 @@ class CausalTimePDE(dde.data.TimePDE):
         )
         residual_by_band = (pde_u + pde_v).detach()
         previous = torch.cat((zeros[:1], residual_by_band[:-1].cumsum(dim=0)))
-        weights = torch.exp(-self.causal.epsilon * previous)
+        weights = torch.exp(-self.epsilon * previous)
         if self.update_pending:
             self.update_pending = False
             self._weight_history.append(torch.cat((residual_by_band, weights)))
@@ -100,3 +103,45 @@ class CausalTimePDE(dde.data.TimePDE):
     def weight_history(self) -> tuple[torch.Tensor, ...]:
         """Невзвешенные потери и веса временных полос по шагам."""
         return tuple(self._weight_history)
+
+    @property
+    def last_min_weight(self) -> float:
+        return self._weight_history[-1][-self.causal.bands:].min().item()
+
+
+class CausalStage(NamedTuple):
+    number: int
+    epsilon: float
+    first_step: int
+    last_step: int
+    min_weight: float
+    reason: str
+
+
+class CausalSchedule(dde.callbacks.Callback):
+    def __init__(self, config: CausalScheduleConfig, stage_limit: int, on_stage_end):
+        super().__init__()
+        self.config = config
+        self.stage_limit = stage_limit
+        self.on_stage_end = on_stage_end
+        self.history: list[CausalStage] = []
+        self.first_step = 1
+
+    def on_batch_end(self):
+        step = self.model.train_state.step
+        min_weight = self.model.data.last_min_weight
+        reached_threshold = min_weight > self.config.threshold
+        if not reached_threshold and step - self.first_step + 1 < self.stage_limit:
+            return
+
+        stage = CausalStage(
+            len(self.history) + 1, self.model.data.epsilon, self.first_step, step,
+            min_weight, "threshold" if reached_threshold else "step_limit",
+        )
+        self.history.append(stage)
+        self.on_stage_end(stage)
+        if stage.number == len(self.config.epsilons):
+            self.model.stop_training = True
+        else:
+            self.first_step = step + 1
+            self.model.data.epsilon = self.config.epsilons[stage.number]

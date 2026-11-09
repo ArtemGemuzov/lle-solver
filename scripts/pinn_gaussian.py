@@ -1,5 +1,6 @@
 """Эволюция гауссова импульса с помощью PINN."""
 
+import csv
 from math import pi
 
 import deepxde as dde
@@ -11,7 +12,7 @@ from lle_runs.runs import create_run
 from lle_solver.grid import PeriodicGrid
 from lle_solver.simulations.evolution import FieldEvolution
 from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
-from lle_solver.simulations.pinn_loss import CausalTimePDE, ReLoBRaLoTimePDE
+from lle_solver.simulations.pinn_loss import CausalSchedule, CausalStage, CausalTimePDE, ReLoBRaLoTimePDE
 from lle_solver.simulations.storage import save_evolution
 
 
@@ -119,10 +120,27 @@ def main() -> None:
     with create_run(config, script=__file__) as run:
         print(f"Run: {run.id}", flush=True)
         model = build_model(config)
-        history, _ = model.train(
+        callbacks = [dde.callbacks.PDEPointResampler(period=training.resample_every)]
+        causal = config.loss.causal
+        schedule = None
+        if causal is not None and causal.schedule is not None:
+            def save_stage(stage: CausalStage) -> None:
+                stage_dir = run.path / f"stage_{stage.number:02d}"
+                stage_dir.mkdir()
+                save_evolution(stage_dir, predict_evolution(model, config))
+                print(f"Stage {stage.number}: epsilon={stage.epsilon:g}, step={stage.last_step}, "
+                      f"min_weight={stage.min_weight:.6f}, {stage.reason}", flush=True)
+
+            stage_limit = training.iterations // len(causal.schedule.epsilons)
+            schedule = CausalSchedule(causal.schedule, stage_limit, save_stage)
+            callbacks.append(schedule)
+
+        history, state = model.train(
             iterations=training.iterations, display_every=training.log_every,
-            callbacks=[dde.callbacks.PDEPointResampler(period=training.resample_every)],
+            callbacks=callbacks,
         )
+        if schedule is not None and history.steps[-1] != state.step:
+            history, _ = model.train(iterations=0, verbose=0)
         losses = np.column_stack((history.steps, history.loss_train, history.loss_test))
         np.savetxt(
             run.path / "losses.csv", losses, delimiter=",", comments="",
@@ -132,7 +150,11 @@ def main() -> None:
         )
         if not np.isfinite(losses).all():
             raise FloatingPointError("Нечисловое значение функции потерь PINN")
-        causal = config.loss.causal
+        if schedule is not None:
+            with (run.path / "causal_stages.csv").open("x", encoding="utf-8", newline="") as target:
+                writer = csv.writer(target)
+                writer.writerow(CausalStage._fields)
+                writer.writerows(schedule.history)
         if config.loss.relobralo is not None or causal is not None:
             if causal is None:
                 columns = ["raw_pde", "raw_ic", "weight_pde", "weight_ic"]
