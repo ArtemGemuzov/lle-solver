@@ -66,7 +66,7 @@ def build_model(config: PinnGaussianConfig):
     else:
         data = ReLoBRaLoTimePDE(
             geometry, residual, initial_conditions, **data_options,
-            balancing=balancing, initial_weight=training.initial_weight, seed=training.seed,
+            balancing=balancing, seed=training.seed,
         )
 
     def periodic_features(points):
@@ -82,9 +82,10 @@ def build_model(config: PinnGaussianConfig):
     net = dde.nn.FNN(layer_sizes, "tanh", "Glorot normal")
     net.apply_feature_transform(periodic_features)
     model = dde.Model(data, net)
+    initial_weight = training.initial_weight if balancing is None else 1.0
     model.compile(
         "adam", lr=training.learning_rate,
-        loss_weights=[1.0, 1.0, training.initial_weight, training.initial_weight],
+        loss_weights=[1.0, 1.0, initial_weight, initial_weight],
     )
     if balancing is not None:
         model.opt.register_step_pre_hook(data.before_optimizer_step)

@@ -10,10 +10,9 @@ from lle_solver.simulations.pinn_gaussian import ReLoBRaLoConfig
 class ReLoBRaLoTimePDE(dde.data.TimePDE):
     """Обновляет общий вес каждой пары компонент LLE и начального условия."""
 
-    def __init__(self, *args, balancing: ReLoBRaLoConfig, initial_weight: float, seed: int, **kwargs):
+    def __init__(self, *args, balancing: ReLoBRaLoConfig, seed: int, **kwargs):
         super().__init__(*args, **kwargs)
         self.balancing = balancing
-        self.initial_weight = initial_weight
         self.rng = np.random.default_rng(seed)
         self._weight_history = []
         self.initial = None
@@ -50,9 +49,8 @@ class ReLoBRaLoTimePDE(dde.data.TimePDE):
             self.weights = alpha * historical + (1 - alpha) * recent
 
         self.previous = current
-        effective = self.weights * current.new_tensor((1.0, self.initial_weight))
-        model.loss_weights = effective.repeat_interleave(2)
-        self._weight_history.append(torch.cat((current, effective)))
+        model.loss_weights = self.weights.repeat_interleave(2)
+        self._weight_history.append(torch.cat((current, self.weights)))
         return losses
 
     @property
