@@ -35,8 +35,20 @@ class ReLoBRaLoConfig(Config):
     lookback_probability: float = Field(default=0.001, ge=0, le=1)
 
 
+class CausalConfig(Config):
+    bands: int = Field(default=4, ge=2)
+    epsilon: float = Field(default=1.0, gt=0)
+
+
 class PinnLossConfig(Config):
     relobralo: ReLoBRaLoConfig | None = None
+    causal: CausalConfig | None = None
+
+    @model_validator(mode="after")
+    def validate_weighting(self) -> Self:
+        if self.relobralo is not None and self.causal is not None:
+            raise ValueError("Выберите один способ взвешивания: ReLoBRaLo или причинные веса")
+        return self
 
 
 class PinnRecordingConfig(RecordingConfig):

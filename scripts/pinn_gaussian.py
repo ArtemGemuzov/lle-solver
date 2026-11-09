@@ -11,7 +11,7 @@ from lle_runs.runs import create_run
 from lle_solver.grid import PeriodicGrid
 from lle_solver.simulations.evolution import FieldEvolution
 from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
-from lle_solver.simulations.pinn_loss import ReLoBRaLoTimePDE
+from lle_solver.simulations.pinn_loss import CausalTimePDE, ReLoBRaLoTimePDE
 from lle_solver.simulations.storage import save_evolution
 
 
@@ -61,13 +61,19 @@ def build_model(config: PinnGaussianConfig):
         train_distribution="pseudo",
     )
     balancing = config.loss.relobralo
-    if balancing is None:
-        data = dde.data.TimePDE(geometry, residual, initial_conditions, **data_options)
-    else:
+    causal = config.loss.causal
+    if balancing is not None:
         data = ReLoBRaLoTimePDE(
             geometry, residual, initial_conditions, **data_options,
             balancing=balancing, seed=training.seed,
         )
+    elif causal is not None:
+        data = CausalTimePDE(
+            geometry, residual, initial_conditions, **data_options,
+            causal=causal, time_end=domain.time_end,
+        )
+    else:
+        data = dde.data.TimePDE(geometry, residual, initial_conditions, **data_options)
 
     def periodic_features(points):
         theta, time = points[:, :1], points[:, 1:2]
@@ -87,7 +93,7 @@ def build_model(config: PinnGaussianConfig):
         "adam", lr=training.learning_rate,
         loss_weights=[1.0, 1.0, initial_weight, initial_weight],
     )
-    if balancing is not None:
+    if balancing is not None or causal is not None:
         model.opt.register_step_pre_hook(data.before_optimizer_step)
     return model
 
@@ -126,15 +132,21 @@ def main() -> None:
         )
         if not np.isfinite(losses).all():
             raise FloatingPointError("Нечисловое значение функции потерь PINN")
-        if config.loss.relobralo is not None:
+        causal = config.loss.causal
+        if config.loss.relobralo is not None or causal is not None:
+            if causal is None:
+                columns = ["raw_pde", "raw_ic", "weight_pde", "weight_ic"]
+            else:
+                bands = range(1, causal.bands + 1)
+                columns = [f"raw_band_{i}" for i in bands] + [f"weight_band_{i}" for i in bands]
             weight_history = torch.stack(model.data.weight_history).cpu().numpy()
             steps = np.arange(1, len(weight_history) + 1)
             np.savetxt(
                 run.path / "loss_weights.csv",
                 np.column_stack((steps, weight_history)),
                 delimiter=",", comments="",
-                header="step,raw_pde,raw_ic,weight_pde,weight_ic",
-                fmt=["%d"] + ["%.9e"] * 4,
+                header=",".join(["step", *columns]),
+                fmt=["%d"] + ["%.9e"] * len(columns),
             )
         model.save(str(run.path / "model"), use_iteration_suffix=False)
         save_evolution(run.path, predict_evolution(model, config))
