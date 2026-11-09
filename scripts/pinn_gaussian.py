@@ -11,6 +11,7 @@ from lle_runs.runs import create_run
 from lle_solver.grid import PeriodicGrid
 from lle_solver.simulations.evolution import FieldEvolution
 from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
+from lle_solver.simulations.pinn_loss import ReLoBRaLoTimePDE
 from lle_solver.simulations.storage import save_evolution
 
 
@@ -49,17 +50,24 @@ def build_model(config: PinnGaussianConfig):
     def on_initial(_, is_initial):
         return is_initial
 
-    data = dde.data.TimePDE(
-        geometry, residual,
-        [
-            dde.icbc.IC(geometry, initial_real, on_initial, component=0),
-            dde.icbc.IC(geometry, initial_imag, on_initial, component=1),
-        ],
+    initial_conditions = [
+        dde.icbc.IC(geometry, initial_real, on_initial, component=0),
+        dde.icbc.IC(geometry, initial_imag, on_initial, component=1),
+    ]
+    data_options = dict(
         num_domain=domain.interior_points,
         num_initial=domain.initial_points,
         num_test=domain.interior_points,
         train_distribution="pseudo",
     )
+    balancing = config.loss.relobralo
+    if balancing is None:
+        data = dde.data.TimePDE(geometry, residual, initial_conditions, **data_options)
+    else:
+        data = ReLoBRaLoTimePDE(
+            geometry, residual, initial_conditions, **data_options,
+            balancing=balancing, initial_weight=training.initial_weight, seed=training.seed,
+        )
 
     def periodic_features(points):
         theta, time = points[:, :1], points[:, 1:2]
@@ -78,6 +86,8 @@ def build_model(config: PinnGaussianConfig):
         "adam", lr=training.learning_rate,
         loss_weights=[1.0, 1.0, training.initial_weight, training.initial_weight],
     )
+    if balancing is not None:
+        model.opt.register_step_pre_hook(data.before_optimizer_step)
     return model
 
 
@@ -115,6 +125,16 @@ def main() -> None:
         )
         if not np.isfinite(losses).all():
             raise FloatingPointError("Нечисловое значение функции потерь PINN")
+        if config.loss.relobralo is not None:
+            weight_history = torch.stack(model.data.weight_history).cpu().numpy()
+            steps = np.arange(1, len(weight_history) + 1)
+            np.savetxt(
+                run.path / "loss_weights.csv",
+                np.column_stack((steps, weight_history)),
+                delimiter=",", comments="",
+                header="step,raw_pde,raw_ic,weight_pde,weight_ic",
+                fmt=["%d"] + ["%.9e"] * 4,
+            )
         model.save(str(run.path / "model"), use_iteration_suffix=False)
         save_evolution(run.path, predict_evolution(model, config))
 

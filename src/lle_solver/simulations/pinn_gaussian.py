@@ -29,6 +29,16 @@ class PinnTrainingConfig(Config):
     seed: int = Field(default=42, ge=0, le=2**32 - 1)
 
 
+class ReLoBRaLoConfig(Config):
+    alpha: float = Field(default=0.999, ge=0, lt=1)
+    temperature: float = Field(default=0.1, gt=0)
+    lookback_probability: float = Field(default=0.001, ge=0, le=1)
+
+
+class PinnLossConfig(Config):
+    relobralo: ReLoBRaLoConfig | None = None
+
+
 class PinnRecordingConfig(RecordingConfig):
     num_points: int = Field(default=512, ge=2)
 
@@ -40,6 +50,7 @@ class PinnGaussianConfig(Config):
     network: PinnNetworkConfig = Field(default_factory=PinnNetworkConfig)
     training: PinnTrainingConfig = Field(default_factory=PinnTrainingConfig)
     recording: PinnRecordingConfig = Field(default_factory=PinnRecordingConfig)
+    loss: PinnLossConfig = Field(default_factory=PinnLossConfig)
 
     @model_validator(mode="after")
     def validate_recording(self) -> Self:
