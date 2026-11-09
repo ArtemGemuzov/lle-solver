@@ -1,0 +1,51 @@
+from math import isclose, pi
+from typing import Self
+
+from pydantic import Field, model_validator
+
+from lle_runs.config import Config
+from lle_solver.simulations.configs import EquationConfig, GaussianPulseConfig, RecordingConfig
+
+
+class PinnDomainConfig(Config):
+    length: float = Field(default=2.0 * pi, gt=0)
+    time_end: float = Field(default=30.0, gt=0)
+    interior_points: int = Field(default=1024, ge=1)
+    initial_points: int = Field(default=256, ge=1)
+
+
+class PinnNetworkConfig(Config):
+    hidden_layers: int = Field(default=4, ge=1)
+    hidden_width: int = Field(default=64, ge=1)
+    spatial_harmonics: int = Field(default=4, ge=1)
+
+
+class PinnTrainingConfig(Config):
+    iterations: int = Field(default=20_000, ge=1)
+    learning_rate: float = Field(default=0.001, gt=0)
+    initial_weight: float = Field(default=10.0, gt=0)
+    resample_every: int = Field(default=100, ge=1)
+    log_every: int = Field(default=100, ge=1)
+    seed: int = Field(default=42, ge=0, le=2**32 - 1)
+
+
+class PinnRecordingConfig(RecordingConfig):
+    num_points: int = Field(default=512, ge=2)
+
+
+class PinnGaussianConfig(Config):
+    equation: EquationConfig = Field(default_factory=EquationConfig)
+    initial: GaussianPulseConfig = Field(default_factory=GaussianPulseConfig)
+    domain: PinnDomainConfig = Field(default_factory=PinnDomainConfig)
+    network: PinnNetworkConfig = Field(default_factory=PinnNetworkConfig)
+    training: PinnTrainingConfig = Field(default_factory=PinnTrainingConfig)
+    recording: PinnRecordingConfig = Field(default_factory=PinnRecordingConfig)
+
+    @model_validator(mode="after")
+    def validate_recording(self) -> Self:
+        time_end = self.domain.time_end
+        interval = self.recording.interval
+        count = round(time_end / interval)
+        if count < 1 or not isclose(time_end, count * interval, rel_tol=0, abs_tol=1e-12):
+            raise ValueError("Конечное время должно быть кратно интервалу записи")
+        return self

@@ -16,6 +16,10 @@ notebooks = [
     "ipympl>=0.10.0",
     "ipywidgets>=8.1.9",
 ]
+pinn = [
+    "deepxde==1.15.1",
+    "torch>=2.5",
+]
 
 [build-system]
 requires = ["setuptools>=61"]
