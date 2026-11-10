@@ -20,6 +20,25 @@ pinn = [
     "deepxde==1.15.1",
     "torch>=2.5",
 ]
+pinn-cuda = [
+    "deepxde==1.15.1",
+    "torch>=2.5",
+]
+
+[tool.uv]
+conflicts = [
+    [{ extra = "pinn" }, { extra = "pinn-cuda" }],
+]
+
+[tool.uv.sources]
+torch = [
+    { index = "pytorch-cu128", extra = "pinn-cuda", marker = "sys_platform == 'win32' or sys_platform == 'linux'" },
+]
+
+[[tool.uv.index]]
+name = "pytorch-cu128"
+url = "https://download.pytorch.org/whl/cu128"
+explicit = true
 
 [build-system]
 requires = ["setuptools>=61"]
