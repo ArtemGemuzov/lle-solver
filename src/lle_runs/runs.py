@@ -1,5 +1,5 @@
 from contextlib import contextmanager
-from collections.abc import Generator
+from collections.abc import Generator, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
@@ -80,7 +80,9 @@ def get_run(run_id: str) -> Run:
 
 
 @contextmanager
-def create_run(config: BaseModel, *, script: str | Path) -> Generator[Run]:
+def create_run(
+    config: BaseModel, *, script: str | Path, extra_metadata: Mapping[str, object] | None = None,
+) -> Generator[Run]:
     started = _now()
     metadata = {
         "script": Path(script).resolve().relative_to(PROJECT_ROOT).as_posix(),
@@ -89,6 +91,11 @@ def create_run(config: BaseModel, *, script: str | Path) -> Generator[Run]:
         "started_utc": started.isoformat(),
         "status": "running",
     }
+    if extra_metadata is not None:
+        reserved = metadata.keys() | {"finished_utc", "error"}
+        if overlap := reserved.intersection(extra_metadata):
+            raise ValueError(f"Служебные поля метаданных: {', '.join(sorted(overlap))}")
+        metadata.update(extra_metadata)
 
     path = RUNS_ROOT / started.strftime("%Y-%m-%d_%H-%M-%S_%f")
     path.mkdir(parents=True, exist_ok=False)

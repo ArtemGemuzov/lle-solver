@@ -2,6 +2,7 @@
 
 import csv
 from math import pi
+import platform
 
 import deepxde as dde
 import numpy as np
@@ -112,13 +113,28 @@ def predict_evolution(model, config: PinnGaussianConfig) -> FieldEvolution:
     return FieldEvolution(theta=grid.theta, times=times, values=values)
 
 
+def training_runtime(device: torch.device) -> dict[str, str]:
+    if device.type == "cuda":
+        device_name = torch.cuda.get_device_name(device)
+    elif device.type == "cpu":
+        device_name = platform.processor() or platform.machine()
+    else:
+        device_name = device.type
+    return {
+        "device": str(device),
+        "device_name": device_name,
+    }
+
+
 def main() -> None:
     config = config_from_cli(PinnGaussianConfig)
 
     training = config.training
     dde.config.set_random_seed(training.seed)
-    with create_run(config, script=__file__) as run:
+    runtime = training_runtime(torch.get_default_device())
+    with create_run(config, script=__file__, extra_metadata={"runtime": runtime}) as run:
         print(f"Run: {run.id}", flush=True)
+        print(f"Device: {runtime['device']} ({runtime['device_name']})", flush=True)
         model = build_model(config)
         callbacks = [dde.callbacks.PDEPointResampler(period=training.resample_every)]
         causal = config.loss.causal
