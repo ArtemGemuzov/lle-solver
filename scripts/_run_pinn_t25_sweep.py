@@ -6,13 +6,14 @@ import os
 from pathlib import Path
 import subprocess
 import sys
-from time import sleep
+from time import monotonic, sleep
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TRAINER = Path("scripts/pinn_gaussian.py")
 CONFIG = Path("experiments/05_pinn-single-soliton/pinn_config.yaml")
 MAX_PROCESSES = 4
+START_INTERVAL_SECONDS = 5
 
 
 @dataclass(frozen=True)
@@ -56,6 +57,7 @@ def run_experiments(experiments: tuple[Experiment, ...]) -> int:
     pending = deque(experiments)
     active: dict[subprocess.Popen, str] = {}
     failed = []
+    next_start = monotonic()
     try:
         while pending or active:
             for process, name in list(active.items()):
@@ -69,16 +71,18 @@ def run_experiments(experiments: tuple[Experiment, ...]) -> int:
                     failed.append(name)
                     print(f"[{name}] Ошибка (код {exit_code})", flush=True)
 
-            while pending and len(active) < MAX_PROCESSES:
+            # Разносим старты, чтобы процессы не получили одинаковые временные ID.
+            if pending and len(active) < MAX_PROCESSES and monotonic() >= next_start:
                 experiment = pending.popleft()
                 process = subprocess.Popen(
                     experiment.command(), cwd=PROJECT_ROOT, env=env,
                     stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
                 )
                 active[process] = experiment.name
+                next_start = monotonic() + START_INTERVAL_SECONDS
                 print(f"[{experiment.name}] Запущен (PID {process.pid})", flush=True)
 
-            if active:
+            if pending or active:
                 sleep(0.25)
     except KeyboardInterrupt:
         print("Запуск серии прерван", flush=True)
