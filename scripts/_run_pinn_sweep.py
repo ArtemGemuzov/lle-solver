@@ -1,4 +1,4 @@
-"""Проверяет число внутренних точек для базовой PINN на [0, 3.5] и [0, 4]."""
+"""Проверяет число точек и шагов Adam для базовой PINN до T = 3.5 и 4."""
 
 from collections import deque
 from dataclasses import dataclass
@@ -20,26 +20,27 @@ START_INTERVAL_SECONDS = 10
 class Experiment:
     time_end: float
     points: int
+    iterations: int
 
     @property
     def name(self) -> str:
-        return f"T={self.time_end:g}, N={self.points}"
+        return f"T={self.time_end:g}, N={self.points}, steps={self.iterations}"
 
     def command(self) -> list[str]:
         return [
             sys.executable, str(TRAINER), "--config", str(CONFIG),
             f"domain.time_end={self.time_end}",
             f"domain.interior_points={self.points}",
-            "training.iterations=160000",
+            f"training.iterations={self.iterations}",
             "recording.interval=0.01",
         ]
 
 
 EXPERIMENTS = (
-    Experiment(time_end=3.5, points=16_384),
-    Experiment(time_end=4.0, points=16_384),
-    Experiment(time_end=3.5, points=8_192),
-    Experiment(time_end=4.0, points=32_768),
+    Experiment(time_end=3.5, points=16_384, iterations=320_000),
+    Experiment(time_end=3.5, points=32_768, iterations=160_000),
+    Experiment(time_end=4.0, points=32_768, iterations=320_000),
+    Experiment(time_end=4.0, points=65_536, iterations=160_000),
 )
 
 
