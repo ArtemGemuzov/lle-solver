@@ -1,4 +1,4 @@
-"""Запускает девять экспериментов PINN на [0, 2.5]."""
+"""Проверяет число внутренних точек для базовой PINN на [0, 3.5] и [0, 4]."""
 
 from collections import deque
 from dataclasses import dataclass
@@ -13,42 +13,33 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TRAINER = Path("scripts/pinn_gaussian.py")
 CONFIG = Path("experiments/05_pinn-single-soliton/pinn_config.yaml")
 MAX_PROCESSES = 4
-START_INTERVAL_SECONDS = 5
+START_INTERVAL_SECONDS = 10
 
 
 @dataclass(frozen=True)
 class Experiment:
-    name: str
-    layers: int
-    width: int
-    harmonics: int
+    time_end: float
     points: int
-    steps: int
-    time_end: float = 2.5
+
+    @property
+    def name(self) -> str:
+        return f"T={self.time_end:g}, N={self.points}"
 
     def command(self) -> list[str]:
         return [
             sys.executable, str(TRAINER), "--config", str(CONFIG),
             f"domain.time_end={self.time_end}",
             f"domain.interior_points={self.points}",
-            f"network.hidden_layers={self.layers}",
-            f"network.hidden_width={self.width}",
-            f"network.spatial_harmonics={self.harmonics}",
-            f"training.iterations={self.steps}",
+            "training.iterations=160000",
             "recording.interval=0.01",
         ]
 
 
 EXPERIMENTS = (
-    Experiment("05_combined", layers=4, width=128, harmonics=12, points=4096, steps=320_000),
-    Experiment("01_more_steps", layers=4, width=64, harmonics=4, points=1024, steps=320_000),
-    Experiment("02_more_points", layers=4, width=64, harmonics=4, points=4096, steps=160_000),
-    Experiment("03_more_harmonics", layers=4, width=64, harmonics=12, points=1024, steps=160_000),
-    Experiment("04_wider", layers=4, width=128, harmonics=4, points=1024, steps=160_000),
-    Experiment("06_combined_more_steps", layers=4, width=128, harmonics=12, points=4096, steps=640_000),
-    Experiment("07_combined_more_points", layers=4, width=128, harmonics=12, points=8192, steps=320_000),
-    Experiment("08_combined_deeper", layers=6, width=128, harmonics=12, points=4096, steps=320_000),
-    Experiment("09_combined_wider", layers=4, width=256, harmonics=12, points=4096, steps=320_000),
+    Experiment(time_end=3.5, points=16_384),
+    Experiment(time_end=4.0, points=16_384),
+    Experiment(time_end=3.5, points=8_192),
+    Experiment(time_end=4.0, points=32_768),
 )
 
 
@@ -76,7 +67,7 @@ def run_experiments(experiments: tuple[Experiment, ...]) -> int:
                 experiment = pending.popleft()
                 process = subprocess.Popen(
                     experiment.command(), cwd=PROJECT_ROOT, env=env,
-                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                    stdin=subprocess.DEVNULL,
                 )
                 active[process] = experiment.name
                 next_start = monotonic() + START_INTERVAL_SECONDS
