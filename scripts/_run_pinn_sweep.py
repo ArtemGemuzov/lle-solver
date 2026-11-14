@@ -1,4 +1,4 @@
-"""Проверяет число точек и шагов Adam для базовой PINN до T = 3.5 и 4."""
+"""Обучает базовую PINN до T = 4 и 4.5 с двумя бюджетами."""
 
 from collections import deque
 from dataclasses import dataclass
@@ -37,10 +37,10 @@ class Experiment:
 
 
 EXPERIMENTS = (
-    Experiment(time_end=3.5, points=16_384, iterations=320_000),
-    Experiment(time_end=3.5, points=32_768, iterations=160_000),
-    Experiment(time_end=4.0, points=32_768, iterations=320_000),
-    Experiment(time_end=4.0, points=65_536, iterations=160_000),
+    Experiment(time_end=4.0, points=32_768, iterations=480_000),
+    Experiment(time_end=4.0, points=65_536, iterations=320_000),
+    Experiment(time_end=4.5, points=32_768, iterations=480_000),
+    Experiment(time_end=4.5, points=65_536, iterations=320_000),
 )
 
 
