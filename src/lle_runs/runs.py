@@ -3,6 +3,7 @@ from collections.abc import Generator, Mapping
 from dataclasses import dataclass
 from datetime import datetime, timezone
 import json
+import os
 from pathlib import Path
 
 from pydantic import BaseModel
@@ -46,10 +47,12 @@ class Run:
         return json.loads((self.path / "metadata.json").read_text(encoding="utf-8"))
 
     def save_metadata(self, metadata: dict) -> None:
-        (self.path / "metadata.json").write_text(
+        temporary = self.path / "metadata.json.tmp"
+        temporary.write_text(
             json.dumps(metadata, indent=2, ensure_ascii=False),
             encoding="utf-8",
         )
+        temporary.replace(self.path / "metadata.json")
 
     def exists(self) -> bool:
         return (self.path / "metadata.json").is_file()
@@ -101,16 +104,69 @@ def create_run(
     path.mkdir(parents=True, exist_ok=False)
 
     run = Run(path)
-    run.save_config(config)
-    run.save_metadata(metadata)
+    with lock_run(run):
+        run.save_config(config)
+        with _execute_run(run, metadata):
+            yield run
 
+
+@contextmanager
+def lock_run(run: Run) -> Generator[None]:
+    """Hold an OS lock for the full execution; never remove the lock file."""
+    with (run.path / "run.lock").open("a+b") as handle:
+        handle.seek(0)
+        if os.name == "nt":
+            import msvcrt
+            try:
+                msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
+            except OSError as error:
+                raise RuntimeError(f"Run {run.id} is locked or cannot be locked") from error
+        else:
+            import fcntl
+            try:
+                fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError as error:
+                raise RuntimeError(f"Run {run.id} is already in use") from error
+        # Closing the handle also releases the lock on exceptions and Ctrl+C.
+        yield
+
+
+@contextmanager
+def _execute_run(run: Run, metadata: dict) -> Generator[None]:
+    metadata.update(status="running")
+    metadata.pop("error", None)
+    metadata.pop("finished_utc", None)
     try:
-        yield run
+        run.save_metadata(metadata)
+        yield
     except BaseException as error:
-        metadata.update(status="failed", error=f"{type(error).__name__}: {error}")
+        metadata.update(status="incomplete", error=f"{type(error).__name__}: {error}")
         raise
     else:
         metadata["status"] = "complete"
     finally:
         metadata["finished_utc"] = _now().isoformat()
-        run.save_metadata(metadata)
+        current = run.load_metadata() if run.exists() else {}
+        current.update({key: metadata[key] for key in ("status", "finished_utc", "error")
+                        if key in metadata})
+        run.save_metadata(current)
+
+
+@contextmanager
+def resume_run(path: Path, *, script: str | Path) -> Generator[Run]:
+    """Resume an unfinished run under the same lock used by create_run."""
+    run = Run(path.resolve())
+    if not run.exists():
+        raise FileNotFoundError(f"Run metadata not found: {run.path}")
+    with lock_run(run):
+        metadata = run.load_metadata()
+        expected_script = Path(script).resolve().relative_to(PROJECT_ROOT).as_posix()
+        if metadata.get("script") != expected_script:
+            raise ValueError("Run belongs to a different script")
+        if metadata.get("status") == "running":
+            metadata["status"] = "incomplete"
+            run.save_metadata(metadata)
+        if metadata.get("status") != "incomplete":
+            raise ValueError("Only incomplete runs can be resumed")
+        with _execute_run(run, metadata):
+            yield run

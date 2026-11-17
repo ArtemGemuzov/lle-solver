@@ -5,6 +5,7 @@ import csv
 from math import pi
 from pathlib import Path
 import platform
+import shutil
 
 import deepxde as dde
 import numpy as np
@@ -12,7 +13,7 @@ import torch
 import yaml
 
 from lle_runs.config import load_config, parse_config_args
-from lle_runs.runs import create_run
+from lle_runs.runs import create_run, resume_run
 from lle_solver.grid import PeriodicGrid
 from lle_solver.simulations.evolution import FieldEvolution
 from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
@@ -139,27 +140,44 @@ def parse_args():
     if args.resume is not None and args.overrides:
         parser.error("При --resume параметры берутся из чекпоинта; переопределения запрещены")
     try:
-        checkpoint = load_checkpoint(args.resume) if args.resume is not None else None
-        config = (PinnGaussianConfig.model_validate(checkpoint["config"]) if checkpoint is not None
+        config = (None if args.resume is not None
                   else load_config(PinnGaussianConfig, args.config, args.overrides))
     except (ValueError, OSError, yaml.YAMLError) as error:
         parser.error(str(error))
-    return config, checkpoint, args.resume
+    return config, args.resume
+
+
+def clear_resumed_outputs(path: Path, completed_stages: int) -> None:
+    """Discard exports beyond the checkpoint; retain completed stage exports."""
+    for name in ("losses.csv", "loss_weights.csv", "causal_stages.csv",
+                 "model.pt", "field_evolution.npz"):
+        (path / name).unlink(missing_ok=True)
+    for stage in path.glob("stage_*"):
+        suffix = stage.name.removeprefix("stage_")
+        if stage.is_dir() and suffix.isdigit() and int(suffix) > completed_stages:
+            shutil.rmtree(stage)
 
 
 def main() -> None:
-    config, saved_checkpoint, resume_path = parse_args()
-
-    training = config.training
-    dde.config.set_random_seed(training.seed)
-    runtime = training_runtime(torch.get_default_device())
-    metadata: dict[str, object] = {"runtime": runtime}
-    if resume_path is not None:
-        metadata["resume"] = {
-            "checkpoint": str(resume_path.resolve()),
-            "step": saved_checkpoint["train_state"]["step"],
-        }
-    with create_run(config, script=__file__, extra_metadata=metadata) as run:
+    config, resume_path = parse_args()
+    if resume_path is not None and resume_path.name != "checkpoint.pt":
+        raise ValueError("Resume requires the run's checkpoint.pt")
+    context = (resume_run(resume_path.parent, script=__file__) if resume_path is not None
+               else create_run(config, script=__file__))
+    with context as run:
+        saved_checkpoint = None
+        if resume_path is not None:
+            # Read only after acquiring the lock: another process may replace it.
+            saved_checkpoint = load_checkpoint(run.path / "checkpoint.pt")
+            config = PinnGaussianConfig.model_validate(saved_checkpoint["config"])
+            if config != run.load_config(PinnGaussianConfig):
+                raise ValueError("Checkpoint configuration differs from the run")
+        training = config.training
+        dde.config.set_random_seed(training.seed)
+        runtime = training_runtime(torch.get_default_device())
+        metadata = run.load_metadata()
+        metadata["runtime"] = runtime
+        run.save_metadata(metadata)
         print(f"Run: {run.id}", flush=True)
         print(f"Device: {runtime['device']} ({runtime['device_name']})", flush=True)
         model = build_model(config)
@@ -183,6 +201,7 @@ def main() -> None:
         checkpoint.set_model(model)
         if saved_checkpoint is not None:
             checkpoint.restore(saved_checkpoint)
+            clear_resumed_outputs(run.path, len(schedule.history) if schedule else 0)
             print(f"Resumed at step {model.train_state.step}", flush=True)
         callbacks.append(checkpoint)
         remaining = 0 if checkpoint.complete else training.iterations - model.train_state.step
