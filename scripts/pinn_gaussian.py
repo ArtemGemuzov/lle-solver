@@ -1,18 +1,22 @@
 """Эволюция гауссова импульса с помощью PINN."""
 
+import argparse
 import csv
 from math import pi
+from pathlib import Path
 import platform
 
 import deepxde as dde
 import numpy as np
 import torch
+import yaml
 
-from lle_runs.config import config_from_cli
+from lle_runs.config import load_config, parse_config_args
 from lle_runs.runs import create_run
 from lle_solver.grid import PeriodicGrid
 from lle_solver.simulations.evolution import FieldEvolution
 from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
+from lle_solver.simulations.pinn_checkpoint import PinnCheckpoint, load_checkpoint
 from lle_solver.simulations.pinn_loss import CausalSchedule, CausalStage, CausalTimePDE, ReLoBRaLoTimePDE
 from lle_solver.simulations.storage import save_evolution
 
@@ -126,17 +130,41 @@ def training_runtime(device: torch.device) -> dict[str, str]:
     }
 
 
+def parse_args():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--resume", type=Path, help="Продолжить обучение из checkpoint.pt")
+    args = parse_config_args(parser)
+    if args.resume is not None and args.config is not None:
+        parser.error("Аргументы --resume и --config нельзя использовать вместе")
+    if args.resume is not None and args.overrides:
+        parser.error("При --resume параметры берутся из чекпоинта; переопределения запрещены")
+    try:
+        checkpoint = load_checkpoint(args.resume) if args.resume is not None else None
+        config = (PinnGaussianConfig.model_validate(checkpoint["config"]) if checkpoint is not None
+                  else load_config(PinnGaussianConfig, args.config, args.overrides))
+    except (ValueError, OSError, yaml.YAMLError) as error:
+        parser.error(str(error))
+    return config, checkpoint, args.resume
+
+
 def main() -> None:
-    config = config_from_cli(PinnGaussianConfig)
+    config, saved_checkpoint, resume_path = parse_args()
 
     training = config.training
     dde.config.set_random_seed(training.seed)
     runtime = training_runtime(torch.get_default_device())
-    with create_run(config, script=__file__, extra_metadata={"runtime": runtime}) as run:
+    metadata: dict[str, object] = {"runtime": runtime}
+    if resume_path is not None:
+        metadata["resume"] = {
+            "checkpoint": str(resume_path.resolve()),
+            "step": saved_checkpoint["train_state"]["step"],
+        }
+    with create_run(config, script=__file__, extra_metadata=metadata) as run:
         print(f"Run: {run.id}", flush=True)
         print(f"Device: {runtime['device']} ({runtime['device_name']})", flush=True)
         model = build_model(config)
-        callbacks = [dde.callbacks.PDEPointResampler(period=training.resample_every)]
+        resampler = dde.callbacks.PDEPointResampler(period=training.resample_every)
+        callbacks = [resampler]
         causal = config.loss.causal
         schedule = None
         if causal is not None and causal.schedule is not None:
@@ -151,12 +179,20 @@ def main() -> None:
             schedule = CausalSchedule(causal.schedule, stage_limit, save_stage)
             callbacks.append(schedule)
 
+        checkpoint = PinnCheckpoint(run.path / "checkpoint.pt", config, resampler, schedule)
+        checkpoint.set_model(model)
+        if saved_checkpoint is not None:
+            checkpoint.restore(saved_checkpoint)
+            print(f"Resumed at step {model.train_state.step}", flush=True)
+        callbacks.append(checkpoint)
+        remaining = 0 if checkpoint.complete else training.iterations - model.train_state.step
         history, state = model.train(
-            iterations=training.iterations, display_every=training.log_every,
+            iterations=remaining, display_every=training.log_every,
             callbacks=callbacks,
         )
         if schedule is not None and history.steps[-1] != state.step:
             history, _ = model.train(iterations=0, verbose=0)
+            checkpoint.save()
         losses = np.column_stack((history.steps, history.loss_train, history.loss_test))
         np.savetxt(
             run.path / "losses.csv", losses, delimiter=",", comments="",
