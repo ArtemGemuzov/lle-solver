@@ -63,6 +63,10 @@ class PinnRecordingConfig(RecordingConfig):
     num_points: int = Field(default=512, ge=2)
 
 
+class PinnCheckpointConfig(Config):
+    every_steps: int = Field(default=1000, ge=1)
+
+
 class PinnGaussianConfig(Config):
     equation: EquationConfig = Field(default_factory=EquationConfig)
     initial: GaussianPulseConfig = Field(default_factory=GaussianPulseConfig)
@@ -71,6 +75,7 @@ class PinnGaussianConfig(Config):
     training: PinnTrainingConfig = Field(default_factory=PinnTrainingConfig)
     recording: PinnRecordingConfig = Field(default_factory=PinnRecordingConfig)
     loss: PinnLossConfig = Field(default_factory=PinnLossConfig)
+    checkpoint: PinnCheckpointConfig = Field(default_factory=PinnCheckpointConfig)
 
     @model_validator(mode="after")
     def validate_recording(self) -> Self:

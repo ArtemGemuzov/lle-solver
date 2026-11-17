@@ -22,6 +22,20 @@ class ReLoBRaLoTimePDE(dde.data.TimePDE):
         self.weights = None
         self.update_pending = False
 
+    def state_dict(self):
+        return {
+            "initial": self.initial, "previous": self.previous, "weights": self.weights,
+            "weight_history": self._weight_history, "rng": self.rng.bit_generator.state,
+        }
+
+    def load_state_dict(self, state):
+        self.initial = state["initial"]
+        self.previous = state["previous"]
+        self.weights = state["weights"]
+        self._weight_history = state["weight_history"]
+        self.rng.bit_generator.state = state["rng"]
+        self.update_pending = False
+
     def before_optimizer_step(self, optimizer, args, kwargs):
         # Adam вызывает closure один раз. Вычисления для вывода loss проходят вне optimizer.step.
         self.update_pending = True
@@ -70,6 +84,14 @@ class CausalTimePDE(dde.data.TimePDE):
         self.epsilon = causal.epsilon if causal.schedule is None else causal.schedule.epsilons[0]
         self.time_end = time_end
         self._weight_history = []
+        self.update_pending = False
+
+    def state_dict(self):
+        return {"epsilon": self.epsilon, "weight_history": self._weight_history}
+
+    def load_state_dict(self, state):
+        self.epsilon = state["epsilon"]
+        self._weight_history = state["weight_history"]
         self.update_pending = False
 
     def before_optimizer_step(self, optimizer, args, kwargs):
@@ -126,6 +148,13 @@ class CausalSchedule(dde.callbacks.Callback):
         self.on_stage_end = on_stage_end
         self.history: list[CausalStage] = []
         self.first_step = 1
+
+    def state_dict(self):
+        return {"first_step": self.first_step, "history": [tuple(s) for s in self.history]}
+
+    def load_state_dict(self, state):
+        self.first_step = state["first_step"]
+        self.history = [CausalStage(*stage) for stage in state["history"]]
 
     def on_batch_end(self):
         step = self.model.train_state.step
