@@ -17,7 +17,7 @@ from lle_runs.runs import create_run, resume_run
 from lle_solver.grid import PeriodicGrid
 from lle_solver.simulations.evolution import FieldEvolution
 from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
-from lle_solver.simulations.pinn_checkpoint import PinnCheckpoint, load_checkpoint
+from lle_solver.simulations.pinn_checkpoint import PinnCheckpoint, extend_checkpoint, load_checkpoint
 from lle_solver.simulations.pinn_loss import CausalSchedule, CausalStage, CausalTimePDE, ReLoBRaLoTimePDE
 from lle_solver.simulations.storage import save_evolution
 
@@ -133,18 +133,28 @@ def training_runtime(device: torch.device) -> dict[str, str]:
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--resume", type=Path, help="Продолжить обучение из checkpoint.pt")
+    modes = parser.add_mutually_exclusive_group()
+    modes.add_argument("--resume", type=Path, help="Продолжить обучение из checkpoint.pt")
+    modes.add_argument("--extend-from", type=Path, help="Начать дочерний Run из checkpoint.pt")
+    parser.add_argument("--extra-steps", type=int, help="Число дополнительных шагов Adam")
     args = parse_config_args(parser)
-    if args.resume is not None and args.config is not None:
-        parser.error("Аргументы --resume и --config нельзя использовать вместе")
-    if args.resume is not None and args.overrides:
-        parser.error("При --resume параметры берутся из чекпоинта; переопределения запрещены")
+    if args.extend_from is not None:
+        if args.extra_steps is None or args.extra_steps < 1:
+            parser.error("--extend-from требует положительного --extra-steps")
+    elif args.extra_steps is not None:
+        parser.error("--extra-steps используется только с --extend-from")
+    source = args.resume or args.extend_from
+    if source is not None:
+        if source.name != "checkpoint.pt":
+            parser.error("Укажите файл checkpoint.pt исходного запуска")
+        if args.config is not None or args.overrides:
+            parser.error("Конфигурация берётся из чекпоинта целиком")
     try:
-        config = (None if args.resume is not None
+        config = (None if source is not None
                   else load_config(PinnGaussianConfig, args.config, args.overrides))
     except (ValueError, OSError, yaml.YAMLError) as error:
         parser.error(str(error))
-    return config, args.resume
+    return config, args
 
 
 def clear_resumed_outputs(path: Path, completed_stages: int) -> None:
@@ -159,14 +169,22 @@ def clear_resumed_outputs(path: Path, completed_stages: int) -> None:
 
 
 def main() -> None:
-    config, resume_path = parse_args()
-    if resume_path is not None and resume_path.name != "checkpoint.pt":
-        raise ValueError("Resume requires the run's checkpoint.pt")
-    context = (resume_run(resume_path.parent, script=__file__) if resume_path is not None
-               else create_run(config, script=__file__))
+    config, args = parse_args()
+    saved_checkpoint = None
+    if args.extend_from is not None:
+        source = args.extend_from.resolve()
+        saved_checkpoint = extend_checkpoint(load_checkpoint(source), args.extra_steps)
+        config = PinnGaussianConfig.model_validate(saved_checkpoint["config"])
+        context = create_run(config, script=__file__, extra_metadata={
+            "parent_run_id": source.parent.name,
+            "parent_step": saved_checkpoint["train_state"]["step"],
+        })
+    elif args.resume is not None:
+        context = resume_run(args.resume.parent, script=__file__)
+    else:
+        context = create_run(config, script=__file__)
     with context as run:
-        saved_checkpoint = None
-        if resume_path is not None:
+        if args.resume is not None:
             # Read only after acquiring the lock: another process may replace it.
             saved_checkpoint = load_checkpoint(run.path / "checkpoint.pt")
             config = PinnGaussianConfig.model_validate(saved_checkpoint["config"])
@@ -201,7 +219,11 @@ def main() -> None:
         checkpoint.set_model(model)
         if saved_checkpoint is not None:
             checkpoint.restore(saved_checkpoint)
-            clear_resumed_outputs(run.path, len(schedule.history) if schedule else 0)
+            if args.extend_from is not None:
+                # Allow resuming the child even before its first periodic save.
+                checkpoint.save()
+            else:
+                clear_resumed_outputs(run.path, len(schedule.history) if schedule else 0)
             print(f"Resumed at step {model.train_state.step}", flush=True)
         callbacks.append(checkpoint)
         remaining = 0 if checkpoint.complete else training.iterations - model.train_state.step

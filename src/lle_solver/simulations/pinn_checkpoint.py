@@ -58,6 +58,18 @@ def load_checkpoint(path: Path) -> dict:
     return checkpoint
 
 
+def extend_checkpoint(checkpoint: dict, extra_steps: int) -> dict:
+    """Prepare a child checkpoint with a new target and the same training state."""
+    config = PinnGaussianConfig.model_validate(checkpoint["config"])
+    if extra_steps < 1:
+        raise ValueError("--extra-steps must be positive")
+    if config.loss.causal is not None and config.loss.causal.schedule is not None:
+        raise ValueError("--extend-from does not support loss.causal.schedule")
+    parameters = config.model_dump(mode="json")
+    parameters["training"]["iterations"] = checkpoint["train_state"]["step"] + extra_steps
+    return {**checkpoint, "config": parameters}
+
+
 class PinnCheckpoint(dde.callbacks.Callback):
     def __init__(self, path: Path, config: PinnGaussianConfig, resampler, schedule=None):
         super().__init__()
