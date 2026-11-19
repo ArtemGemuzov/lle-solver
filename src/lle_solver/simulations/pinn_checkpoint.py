@@ -70,6 +70,28 @@ def extend_checkpoint(checkpoint: dict, extra_steps: int) -> dict:
     return {**checkpoint, "config": parameters}
 
 
+def initial_weights(checkpoint: dict, target: PinnGaussianConfig) -> dict:
+    """Transfer the learned field to the target model's time coordinates."""
+    # Derivation: experiments/05_pinn-single-soliton/time-transfer.md
+    source = PinnGaussianConfig.model_validate(checkpoint["config"])
+    if source.network != target.network:
+        raise ValueError("--init-from требует совпадения параметров network")
+    if source.domain.length != target.domain.length:
+        raise ValueError("--init-from требует одинаковой domain.length для пространственных гармоник")
+
+    weights = checkpoint["model"].copy()
+    ratio = target.domain.time_end / source.domain.time_end
+    if ratio != 1:
+        # The first feature is normalized time: tau_old = ratio * tau_new + ratio - 1.
+        weight = weights["linears.0.weight"]
+        time_column = weight[:, 0]
+        adjusted = weight.clone()
+        adjusted[:, 0] = ratio * time_column
+        weights["linears.0.weight"] = adjusted
+        weights["linears.0.bias"] = weights["linears.0.bias"] + (ratio - 1) * time_column
+    return weights
+
+
 class PinnCheckpoint(dde.callbacks.Callback):
     def __init__(self, path: Path, config: PinnGaussianConfig, resampler, schedule=None):
         super().__init__()
