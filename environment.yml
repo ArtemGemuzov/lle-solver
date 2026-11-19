@@ -13,5 +13,8 @@ dependencies:
   - deepxde=1.15.1
   - pytorch-gpu=2.11.0
   - cuda-version=12.9
+  - pip
+  - pip:
+      - -e .
 variables:
   DDE_BACKEND: pytorch
