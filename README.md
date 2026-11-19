@@ -81,18 +81,18 @@ $env:DDE_BACKEND = 'pytorch'
 Для обучения на CPU используйте профиль `pinn`.
 
 ```powershell
-uv run --locked --extra pinn scripts/pinn_gaussian.py
+uv run --locked --extra pinn scripts/pinn_gaussian.py train
 ```
 
 Для обучения на NVIDIA используйте профиль `pinn-cuda`.
 
 ```powershell
-uv run --locked --extra pinn-cuda scripts/pinn_gaussian.py
+uv run --locked --extra pinn-cuda scripts/pinn_gaussian.py train
 ```
 
 Если нужный профиль уже установлен, `--no-sync` запускает скрипт в текущем
 окружении проекта без синхронизации.
 
 ```powershell
-uv run --no-sync scripts/pinn_gaussian.py
+uv run --no-sync scripts/pinn_gaussian.py train
 ```

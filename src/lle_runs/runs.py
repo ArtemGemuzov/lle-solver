@@ -75,7 +75,7 @@ def list_runs(*, script: str | None = None) -> list[Run]:
 
 def get_run(run_id: str) -> Run:
     if not run_id or Path(run_id).name != run_id or run_id in (".", ".."):
-        raise ValueError("Ожидается ID запуска")
+        raise ValueError("Expected a run ID")
     run = Run(RUNS_ROOT / run_id)
     if not run.exists():
         raise FileNotFoundError(run_id)
@@ -97,7 +97,7 @@ def create_run(
     if extra_metadata is not None:
         reserved = metadata.keys() | {"finished_utc", "error"}
         if overlap := reserved.intersection(extra_metadata):
-            raise ValueError(f"Служебные поля метаданных: {', '.join(sorted(overlap))}")
+            raise ValueError(f"Reserved metadata fields: {', '.join(sorted(overlap))}")
         metadata.update(extra_metadata)
 
     path = RUNS_ROOT / started.strftime("%Y-%m-%d_%H-%M-%S_%f")
@@ -112,7 +112,7 @@ def create_run(
 
 @contextmanager
 def lock_run(run: Run) -> Generator[None]:
-    """Hold an OS lock for the full execution; never remove the lock file."""
+    """Удерживает системную блокировку файла на время выполнения запуска."""
     with (run.path / "run.lock").open("a+b") as handle:
         handle.seek(0)
         if os.name == "nt":
@@ -120,14 +120,14 @@ def lock_run(run: Run) -> Generator[None]:
             try:
                 msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
             except OSError as error:
-                raise RuntimeError(f"Run {run.id} is locked or cannot be locked") from error
+                raise RuntimeError(f"Could not acquire the lock for run {run.id}") from error
         else:
             import fcntl
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
                 raise RuntimeError(f"Run {run.id} is already in use") from error
-        # Closing the handle also releases the lock on exceptions and Ctrl+C.
+        # Закрытие файла освобождает блокировку, в том числе при исключении или Ctrl+C.
         yield
 
 
@@ -154,7 +154,7 @@ def _execute_run(run: Run, metadata: dict) -> Generator[None]:
 
 @contextmanager
 def resume_run(path: Path, *, script: str | Path) -> Generator[Run]:
-    """Resume an unfinished run under the same lock used by create_run."""
+    """Возобновляет незавершённый запуск под той же блокировкой, что и create_run."""
     run = Run(path.resolve())
     if not run.exists():
         raise FileNotFoundError(f"Run metadata not found: {run.path}")

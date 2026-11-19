@@ -53,36 +53,36 @@ def _unpack(value, device="cpu"):
 def load_checkpoint(path: Path) -> dict:
     checkpoint = torch.load(path, map_location="cpu", weights_only=True)
     if checkpoint.get("format_version") != FORMAT_VERSION:
-        raise ValueError("Неподдерживаемая версия чекпоинта PINN")
+        raise ValueError("Unsupported PINN checkpoint version")
     PinnGaussianConfig.model_validate(checkpoint["config"])
     return checkpoint
 
 
 def extend_checkpoint(checkpoint: dict, extra_steps: int) -> dict:
-    """Prepare a child checkpoint with a new target and the same training state."""
+    """Подготавливает чекпоинт дочернего запуска с новым числом шагов."""
     config = PinnGaussianConfig.model_validate(checkpoint["config"])
     if extra_steps < 1:
-        raise ValueError("--extra-steps must be positive")
+        raise ValueError("The number of extra steps must be positive")
     if config.loss.causal is not None and config.loss.causal.schedule is not None:
-        raise ValueError("--extend-from does not support loss.causal.schedule")
+        raise ValueError("Cannot extend training with loss.causal.schedule enabled")
     parameters = config.model_dump(mode="json")
     parameters["training"]["iterations"] = checkpoint["train_state"]["step"] + extra_steps
     return {**checkpoint, "config": parameters}
 
 
 def initial_weights(checkpoint: dict, target: PinnGaussianConfig) -> dict:
-    """Transfer the learned field to the target model's time coordinates."""
-    # Derivation: experiments/05_pinn-single-soliton/time-transfer.md
+    """Пересчитывает веса первого слоя для временной координаты целевой модели."""
+    # Вывод формулы: experiments/05_pinn-single-soliton/time-transfer.md
     source = PinnGaussianConfig.model_validate(checkpoint["config"])
     if source.network != target.network:
-        raise ValueError("--init-from требует совпадения параметров network")
+        raise ValueError("Weight transfer requires matching network configurations")
     if source.domain.length != target.domain.length:
-        raise ValueError("--init-from требует одинаковой domain.length для пространственных гармоник")
+        raise ValueError("Weight transfer requires matching domain.length for the spatial harmonics")
 
     weights = checkpoint["model"].copy()
     ratio = target.domain.time_end / source.domain.time_end
     if ratio != 1:
-        # The first feature is normalized time: tau_old = ratio * tau_new + ratio - 1.
+        # Первый признак — нормированное время: tau_old = ratio * tau_new + ratio - 1.
         weight = weights["linears.0.weight"]
         time_column = weight[:, 0]
         adjusted = weight.clone()
@@ -113,7 +113,7 @@ class PinnCheckpoint(dde.callbacks.Callback):
     def save(self):
         model = self.model
         if not all(torch.isfinite(p).all().item() for p in model.net.parameters()):
-            raise FloatingPointError("Нечисловые веса PINN; предыдущий чекпоинт сохранён")
+            raise FloatingPointError("Non-finite PINN weights detected. The previous checkpoint was preserved")
         checkpoint = {
             "format_version": FORMAT_VERSION,
             "config": self.config.model_dump(mode="json"),
@@ -144,7 +144,7 @@ class PinnCheckpoint(dde.callbacks.Callback):
 
     def restore(self, checkpoint):
         if checkpoint["config"] != self.config.model_dump(mode="json"):
-            raise ValueError("Конфигурация не совпадает с чекпоинтом")
+            raise ValueError("Training configuration does not match the checkpoint")
         model = self.model
         device = next(model.net.parameters()).device
         model.net.load_state_dict(checkpoint["model"])
@@ -160,7 +160,7 @@ class PinnCheckpoint(dde.callbacks.Callback):
             self.schedule.load_state_dict(_unpack(checkpoint["schedule"]))
             self._stage_count = len(self.schedule.history)
         self.resampler.epochs_since_last_resample = checkpoint["resample_counter"]
-        # Building the model consumes randomness; restore generators only afterwards.
+        # Построение модели использует генераторы случайных чисел, поэтому восстанавливаем их в конце.
         rng = _unpack(checkpoint["rng"])
         random.setstate(rng["python"])
         np.random.set_state(rng["numpy"])
@@ -173,8 +173,8 @@ class PinnCheckpoint(dde.callbacks.Callback):
 
     def on_train_begin(self):
         if self._restored:
-            # DeepXDE evaluates once before this hook. It must not add an extra
-            # history entry or change the saved best result on resampled points.
+            # DeepXDE вычисляет потери перед этим вызовом. Убираем повторную запись
+            # в истории и восстанавливаем лучший результат из чекпоинта.
             for values in vars(self.model.losshistory).values():
                 values.pop()
             vars(self.model.train_state).update(self._best_state)

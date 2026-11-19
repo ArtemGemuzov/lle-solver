@@ -55,7 +55,7 @@ class PinnLossConfig(Config):
     @model_validator(mode="after")
     def validate_weighting(self) -> Self:
         if self.relobralo is not None and self.causal is not None:
-            raise ValueError("Выберите один способ взвешивания: ReLoBRaLo или причинные веса")
+            raise ValueError("Choose either ReLoBRaLo or causal weighting")
         return self
 
 
@@ -83,7 +83,7 @@ class PinnGaussianConfig(Config):
         interval = self.recording.interval
         count = round(time_end / interval)
         if count < 1 or not isclose(time_end, count * interval, rel_tol=0, abs_tol=1e-12):
-            raise ValueError("Конечное время должно быть кратно интервалу записи")
+            raise ValueError("End time must be a multiple of the recording interval")
         return self
 
     @model_validator(mode="after")
@@ -91,5 +91,5 @@ class PinnGaussianConfig(Config):
         causal = self.loss.causal
         if causal is not None and causal.schedule is not None:
             if self.training.iterations < len(causal.schedule.epsilons):
-                raise ValueError("Для каждой стадии причинного взвешивания нужен хотя бы один шаг Adam")
+                raise ValueError("Each causal weighting stage requires at least one Adam step")
         return self

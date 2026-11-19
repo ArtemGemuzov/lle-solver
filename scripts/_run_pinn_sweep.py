@@ -28,7 +28,7 @@ class Experiment:
 
     def command(self) -> list[str]:
         return [
-            sys.executable, str(TRAINER), "--config", str(CONFIG),
+            sys.executable, str(TRAINER), "train", "--config", str(CONFIG),
             f"domain.time_end={self.time_end}",
             f"domain.interior_points={self.points}",
             f"training.iterations={self.iterations}",
