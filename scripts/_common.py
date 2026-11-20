@@ -40,9 +40,10 @@ def run(
         axes.set_xlabel(r"$\theta$")
         axes.set_ylabel(r"$|u|^2$")
 
-    for step, time, state in evolve(scheme, state, num_steps, step_size):
+    current_state = state
+    for step, time, current_state in evolve(scheme, state, num_steps, step_size):
         if live and (step == 1 or step % steps_per_frame == 0):
-            intensity = np.abs(state) ** 2
+            intensity = np.abs(current_state) ** 2
 
             line.set_ydata(intensity)
             axes.set_ylim(intensity.min() - 0.2, intensity.max() + 0.2)
@@ -51,18 +52,18 @@ def run(
             plt.pause(0.001)
 
         if step % save_every == 0:
-            if not np.isfinite(state).all():
+            if not np.isfinite(current_state).all():
                 raise RuntimeError(f"расходимость на шаге {step}, t = {time:.3f}")
-            intensity = np.abs(state) ** 2
+            intensity = np.abs(current_state) ** 2
             intensities.append(intensity)
-            spectra.append(np.abs(fft(state)) ** 2)
+            spectra.append(np.abs(fft(current_state)) ** 2)
             energies.append(float(intensity.sum() * grid.spacing))
             times.append(time)
 
     if live:
         plt.ioff()
 
-    return state, History(
+    return current_state, History(
         np.array(times), np.array(intensities), np.array(spectra), np.array(energies)
     )
 

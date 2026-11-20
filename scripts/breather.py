@@ -31,14 +31,14 @@ scheme = StrangSplitStep(
 )
 
 # Приближённое аналитическое решение для солитона
-field = np.sqrt(2 * detuning) / np.cosh(np.sqrt(detuning) * grid.theta)
-field = field.astype(np.complex128)
+initial_field = np.sqrt(2 * detuning) / np.cosh(np.sqrt(detuning) * grid.theta)
+initial_field = initial_field.astype(np.complex128)
 
 recorder = FrameRecorder(grid, time_step, frame_interval)
 num_steps = round(time_end / time_step)
 peak_power = np.empty(num_steps + 1)
 
-for step, _, field in evolve(scheme, field, num_steps, time_step):
+for step, _, field in evolve(scheme, initial_field, num_steps, time_step):
     peak_power[step] = np.abs(field).max() ** 2
     recorder.record(field, step, detuning, "evolution")
 
