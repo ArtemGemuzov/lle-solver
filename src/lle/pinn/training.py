@@ -33,6 +33,7 @@ class PinnTraining:
         training,
         *,
         checkpoint_path,
+        checkpoint_every_steps: int,
         parameters,
         causal=None,
         on_stage_end=None,
@@ -48,7 +49,14 @@ class PinnTraining:
                 causal.schedule, stage_limit, on_stage_end or (lambda stage: None)
             )
             callbacks.append(schedule)
-        checkpoint = PinnCheckpoint(checkpoint_path, parameters, resampler, schedule)
+        checkpoint = PinnCheckpoint(
+            checkpoint_path,
+            parameters,
+            resampler,
+            schedule,
+            iterations=training.iterations,
+            every_steps=checkpoint_every_steps,
+        )
         checkpoint.set_model(model)
         self.checkpoint = checkpoint
         self.callbacks = [*callbacks, checkpoint]

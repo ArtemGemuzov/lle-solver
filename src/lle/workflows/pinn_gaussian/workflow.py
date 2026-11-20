@@ -6,12 +6,8 @@ from pathlib import Path
 import deepxde as dde
 import torch
 
-from lle.pinn.checkpoint import (
-    extend_checkpoint,
-    initial_weights,
-    load_checkpoint,
-)
-from lle.pinn.model import build_model
+from lle.pinn.checkpoint import load_checkpoint
+from lle.pinn.model import build_model, initial_weights
 from lle.pinn.training import PinnTraining
 from lle.runs.runs import PROJECT_ROOT, Run, create_run, get_run, resume_run
 from lle.workflows.pinn_gaussian.config import PinnGaussianConfig
@@ -46,6 +42,7 @@ def _training(run, config):
         model,
         config.training,
         checkpoint_path=run.path / "checkpoint.pt",
+        checkpoint_every_steps=config.checkpoint.every_steps,
         parameters=config.model_dump(mode="json"),
         causal=config.loss.causal,
         on_stage_end=lambda stage: save_stage(run, config, model, stage),
@@ -102,8 +99,16 @@ def extend(source: Run | str, steps: int, *, script=DEFAULT_SCRIPT) -> Run:
     """Создаёт дочерний Run с дополнительными шагами и состоянием Adam."""
     source = _source(source)
     parent = load_checkpoint(source.path / "checkpoint.pt")
-    saved = extend_checkpoint(parent, steps)
-    config = PinnGaussianConfig.model_validate(saved["config"])
+    source_config = PinnGaussianConfig.model_validate(parent["config"])
+    if steps < 1:
+        raise ValueError("The number of extra steps must be positive")
+    causal = source_config.loss.causal
+    if causal is not None and causal.schedule is not None:
+        raise ValueError("Cannot extend training with loss.causal.schedule enabled")
+    parameters = source_config.model_dump(mode="json")
+    parameters["training"]["iterations"] = parent["train_state"]["step"] + steps
+    config = PinnGaussianConfig.model_validate(parameters)
+    saved = {**parent, "config": config.model_dump(mode="json")}
     metadata = {
         "parent_run_id": source.id,
         "parent_step": saved["train_state"]["step"],
@@ -128,8 +133,17 @@ def transfer(
     if config is None:
         config = source.load_config(PinnGaussianConfig)
     parent = load_checkpoint(source.path / "checkpoint.pt")
-    PinnGaussianConfig.model_validate(parent["config"])
-    weights = initial_weights(parent, config.model_dump(mode="json"))
+    source_config = PinnGaussianConfig.model_validate(parent["config"])
+    if source_config.network != config.network:
+        raise ValueError("Weight transfer requires matching network configurations")
+    if source_config.domain.length != config.domain.length:
+        raise ValueError(
+            "Weight transfer requires matching domain.length for the spatial harmonics"
+        )
+    weights = initial_weights(
+        parent["model"],
+        time_ratio=config.domain.time_end / source_config.domain.time_end,
+    )
     metadata = {
         "parent_run_id": source.id,
         "parent_step": parent["train_state"]["step"],

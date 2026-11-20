@@ -69,54 +69,22 @@ def load_checkpoint(path: Path) -> dict:
     return checkpoint
 
 
-def extend_checkpoint(checkpoint: dict, extra_steps: int) -> dict:
-    """Подготавливает чекпоинт дочернего запуска с новым числом шагов."""
-    config = checkpoint["config"]
-    if extra_steps < 1:
-        raise ValueError("The number of extra steps must be positive")
-    if (
-        config["loss"]["causal"] is not None
-        and config["loss"]["causal"]["schedule"] is not None
-    ):
-        raise ValueError("Cannot extend training with loss.causal.schedule enabled")
-    parameters = {**config, "training": dict(config["training"])}
-    parameters["training"]["iterations"] = (
-        checkpoint["train_state"]["step"] + extra_steps
-    )
-    return {**checkpoint, "config": parameters}
-
-
-def initial_weights(checkpoint: dict, target: dict) -> dict:
-    """Пересчитывает веса первого слоя для временной координаты целевой модели."""
-    # Вывод формулы: experiments/05_pinn-single-soliton/time-transfer.md
-    source = checkpoint["config"]
-    if source["network"] != target["network"]:
-        raise ValueError("Weight transfer requires matching network configurations")
-    if source["domain"]["length"] != target["domain"]["length"]:
-        raise ValueError(
-            "Weight transfer requires matching domain.length for the spatial harmonics"
-        )
-
-    weights = checkpoint["model"].copy()
-    ratio = target["domain"]["time_end"] / source["domain"]["time_end"]
-    if ratio != 1:
-        # Первый признак — нормированное время: tau_old = ratio * tau_new + ratio - 1.
-        weight = weights["linears.0.weight"]
-        time_column = weight[:, 0]
-        adjusted = weight.clone()
-        adjusted[:, 0] = ratio * time_column
-        weights["linears.0.weight"] = adjusted
-        weights["linears.0.bias"] = (
-            weights["linears.0.bias"] + (ratio - 1) * time_column
-        )
-    return weights
-
-
 class PinnCheckpoint(dde.callbacks.Callback):
-    def __init__(self, path: Path, config: dict, resampler, schedule=None):
+    def __init__(
+        self,
+        path: Path,
+        config: dict,
+        resampler,
+        schedule=None,
+        *,
+        iterations: int,
+        every_steps: int,
+    ):
         super().__init__()
         self.path = path
         self.config = config
+        self.iterations = iterations
+        self.every_steps = every_steps
         self.resampler = resampler
         self.schedule = schedule
         self._restored = False
@@ -126,7 +94,7 @@ class PinnCheckpoint(dde.callbacks.Callback):
 
     @property
     def complete(self):
-        return self.model.train_state.step >= self.config["training"]["iterations"] or (
+        return self.model.train_state.step >= self.iterations or (
             self.schedule is not None
             and len(self.schedule.history) == len(self.schedule.config.epsilons)
         )
@@ -218,7 +186,7 @@ class PinnCheckpoint(dde.callbacks.Callback):
     def on_epoch_end(self):
         stages = len(self.schedule.history) if self.schedule is not None else 0
         if (
-            self.model.train_state.step % self.config["checkpoint"]["every_steps"] == 0
+            self.model.train_state.step % self.every_steps == 0
             or stages != self._stage_count
             or self.complete
         ):

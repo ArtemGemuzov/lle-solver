@@ -1,6 +1,7 @@
 """Сеть, периодические признаки и невязка LLE для гауссова импульса."""
 
-from math import pi
+from collections.abc import Mapping
+from math import isfinite, pi
 
 import deepxde as dde
 import numpy as np
@@ -95,3 +96,26 @@ def build_model(*, equation, initial, domain, network, training, loss):
     if balancing is not None or causal is not None:
         model.opt.register_step_pre_hook(data.before_optimizer_step)
     return model
+
+
+def initial_weights(
+    weights: Mapping[str, torch.Tensor], *, time_ratio: float
+) -> dict[str, torch.Tensor]:
+    """Пересчитывает первый слой при замене T на time_ratio * T.
+
+    Исходные тензоры не изменяются; остальные слои сохраняют прежние веса.
+    """
+    if not isfinite(time_ratio) or time_ratio <= 0:
+        raise ValueError("Time ratio must be finite and positive")
+    result = dict(weights)
+    if time_ratio != 1:
+        # tau_old = time_ratio * tau_new + time_ratio - 1.
+        weight = weights["linears.0.weight"]
+        time_column = weight[:, 0]
+        adjusted = weight.clone()
+        adjusted[:, 0] = time_ratio * time_column
+        result["linears.0.weight"] = adjusted
+        result["linears.0.bias"] = (
+            weights["linears.0.bias"] + (time_ratio - 1) * time_column
+        )
+    return result
