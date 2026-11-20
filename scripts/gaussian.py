@@ -1,61 +1,17 @@
-"""Эволюция гауссова импульса."""
+"""Эволюция гауссова импульса.
 
-import numpy as np
+Из корня проекта: python scripts/gaussian.py solver.time_end=1.0 recording.interval=0.1
+Без --config используются параметры по умолчанию.
+"""
 
-from lle_runs.config import config_from_cli
-from lle_runs.runs import create_run
-from lle_solver.grid import PeriodicGrid
-from lle_solver.integrators import rk4_step
-from lle_solver.lle import LugiatoLefever
-from lle_solver.simulations.evolution import FieldEvolution
-from lle_solver.simulations.gaussian import GaussianConfig
-from lle_solver.simulations.storage import save_evolution
-from lle_solver.split_schemes import StrangSplitStep
-from lle_solver.steps import FourierStep, IntegratorStep
-
-
-def simulate(p: GaussianConfig) -> FieldEvolution:
-    dt = p.solver.time_step
-
-    total = round(p.solver.time_end / dt)
-    record_step = round(p.recording.interval / dt)
-
-    grid = PeriodicGrid(p.grid.num_points, p.grid.length)
-    equation = LugiatoLefever(
-        p.equation.detuning,
-        p.equation.pump_amplitude,
-        p.equation.beta2,
-    )
-    scheme = StrangSplitStep(
-        FourierStep(equation.linear_operator, grid.wavenumbers),
-        IntegratorStep(equation.nonlinear_term, rk4_step),
-    )
-
-    field = (
-        p.initial.amplitude * np.exp(-(grid.theta**2) / (2 * p.initial.width**2))
-    ).astype(np.complex128)
-
-    steps = np.arange(0, total + 1, record_step)
-    fields = np.empty((steps.size, grid.num_points), dtype=np.complex128)
-
-    for index, step in enumerate(steps):
-        if index:
-            field = scheme.advance(field, record_step, dt)
-
-        if not np.isfinite(field).all():
-            raise FloatingPointError(f"Нечисловое поле на шаге {step}")
-
-        fields[index] = field
-
-    return FieldEvolution(
-        theta=grid.theta,
-        times=np.asarray(steps * dt, dtype=np.float64),
-        values=fields,
-    )
+from lle.config import config_from_cli
+from lle.runs.runs import create_run
+from lle.storage import save_evolution
+from lle.workflows.ssfm_gaussian import SsfmGaussianConfig, simulate
 
 
 def main() -> None:
-    config = config_from_cli(GaussianConfig)
+    config = config_from_cli(SsfmGaussianConfig)
     with create_run(config, script=__file__) as run:
         save_evolution(run.path, simulate(config))
     print(f"Run: {run.id}")

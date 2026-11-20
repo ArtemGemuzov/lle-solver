@@ -6,9 +6,9 @@ from matplotlib.colors import LogNorm
 from numpy.fft import fft
 from scipy.signal import find_peaks
 
-from lle_solver.evolution import SplitScheme, evolve
-from lle_solver.grid import PeriodicGrid
-from lle_solver.types import State, StepSize
+from lle.numerics.evolution import SplitScheme, evolve
+from lle.numerics.grid import PeriodicGrid
+from lle.numerics.types import State, StepSize
 
 
 @dataclass

@@ -2,11 +2,11 @@ import numpy as np
 from _common import count_peaks
 from _viewer import FrameRecorder, write_viewer
 
-from lle_solver.grid import PeriodicGrid
-from lle_solver.integrators import rk4_step
-from lle_solver.lle import LugiatoLefever
-from lle_solver.split_schemes import SplitScheme, StrangSplitStep
-from lle_solver.steps import FourierStep, IntegratorStep
+from lle.numerics.grid import PeriodicGrid
+from lle.numerics.integrators import rk4_step
+from lle.numerics.lle import LugiatoLefever
+from lle.numerics.split_schemes import SplitScheme, StrangSplitStep
+from lle.numerics.steps import FourierStep, IntegratorStep
 
 SEED = 42
 

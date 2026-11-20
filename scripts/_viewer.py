@@ -4,8 +4,8 @@ from pathlib import Path
 import numpy as np
 from _common import count_peaks
 
-from lle_solver.grid import PeriodicGrid
-from lle_solver.types import State, StepSize, Time
+from lle.numerics.grid import PeriodicGrid
+from lle.numerics.types import State, StepSize, Time
 
 PHASE_COLORS = ("#4f9dde", "#52c785", "#e0654f", "#b57edc", "#8a93a6")
 

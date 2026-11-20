@@ -20,9 +20,9 @@ import argparse
 import sys
 from pathlib import Path
 
-from lle_runs.config import load_config
-from lle_runs.runs import get_run
-from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
+from lle.config import load_config
+from lle.runs.runs import get_run
+from lle.workflows.pinn_gaussian.config import PinnGaussianConfig
 
 
 def main(argv=None):
@@ -62,16 +62,16 @@ def main(argv=None):
             path = source.path / "parameters.yaml"
         config = load_config(PinnGaussianConfig, path, args.overrides)
 
-    from lle_solver.simulations import pinn_runs
+    from lle.workflows import pinn_gaussian
 
     if command == "train":
-        pinn_runs.train(__file__, config)
+        pinn_gaussian.train(config)
     elif command == "resume":
-        pinn_runs.resume(__file__, source)
+        pinn_gaussian.resume(source)
     elif command == "extend":
-        pinn_runs.extend(__file__, source, args.steps)
+        pinn_gaussian.extend(source, args.steps)
     else:
-        pinn_runs.transfer(__file__, source, config)
+        pinn_gaussian.transfer(source, config)
 
 
 if __name__ == "__main__":
