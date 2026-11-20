@@ -96,9 +96,12 @@ class PinnGaussianConfig(Config):
     @model_validator(mode="after")
     def validate_schedule(self) -> Self:
         causal = self.loss.causal
-        if causal is not None and causal.schedule is not None:
-            if self.training.iterations < len(causal.schedule.epsilons):
-                raise ValueError(
-                    "Each causal weighting stage requires at least one Adam step"
-                )
+        if (
+            causal is not None
+            and causal.schedule is not None
+            and self.training.iterations < len(causal.schedule.epsilons)
+        ):
+            raise ValueError(
+                "Each causal weighting stage requires at least one Adam step"
+            )
         return self

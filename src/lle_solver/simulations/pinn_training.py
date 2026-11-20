@@ -61,12 +61,12 @@ def build_model(config: PinnGaussianConfig):
         dde.icbc.IC(geometry, initial_real, on_initial, component=0),
         dde.icbc.IC(geometry, initial_imag, on_initial, component=1),
     ]
-    data_options = dict(
-        num_domain=domain.interior_points,
-        num_initial=domain.initial_points,
-        num_test=domain.interior_points,
-        train_distribution="pseudo",
-    )
+    data_options = {
+        "num_domain": domain.interior_points,
+        "num_initial": domain.initial_points,
+        "num_test": domain.interior_points,
+        "train_distribution": "pseudo",
+    }
     balancing = config.loss.relobralo
     causal = config.loss.causal
     if balancing is not None:
