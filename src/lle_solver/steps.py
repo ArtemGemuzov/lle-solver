@@ -20,16 +20,18 @@ class Step(Protocol):
 
 
 class FourierStep:
-    def __init__(self, linear_operator: LinearOperator, wavenumbers: Wavenumbers) -> None:
+    def __init__(
+        self, linear_operator: LinearOperator, wavenumbers: Wavenumbers
+    ) -> None:
         self.symbol = linear_operator(wavenumbers)
+        self._propagator = lru_cache(maxsize=2)(self._compute_propagator)
 
-    @lru_cache(maxsize=2)
-    def propagator(self, step_size: StepSize) -> Symbol:
+    def _compute_propagator(self, step_size: StepSize) -> Symbol:
         return np.exp(step_size * self.symbol)
 
     def __call__(self, state: State, step_size: StepSize) -> State:
         spectrum = fft(state)
-        return ifft(self.propagator(step_size) * spectrum)
+        return ifft(self._propagator(step_size) * spectrum)
 
 
 class IntegratorStep:
