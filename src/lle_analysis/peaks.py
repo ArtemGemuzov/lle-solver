@@ -5,7 +5,6 @@ from scipy.signal import find_peaks
 from lle_solver.grid import uniform_spacing
 from lle_solver.simulations.evolution import Intensity
 
-
 DEFAULT_PEAK_PROMINENCE = 0.25
 
 

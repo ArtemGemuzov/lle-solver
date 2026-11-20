@@ -1,4 +1,5 @@
 import numpy as np
+from _viewer import FrameRecorder, write_viewer
 from scipy.signal import find_peaks
 
 from lle_solver.evolution import evolve
@@ -7,8 +8,6 @@ from lle_solver.integrators import rk4_step
 from lle_solver.lle import LugiatoLefever
 from lle_solver.split_schemes import StrangSplitStep
 from lle_solver.steps import FourierStep, IntegratorStep
-
-from _viewer import FrameRecorder, write_viewer
 
 SEED = 42
 

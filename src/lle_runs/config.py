@@ -3,8 +3,8 @@ from collections.abc import Sequence
 from pathlib import Path
 from typing import TypeVar
 
-from pydantic import BaseModel, ConfigDict
 import yaml
+from pydantic import BaseModel, ConfigDict
 
 
 class Config(BaseModel):

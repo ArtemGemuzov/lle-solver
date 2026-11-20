@@ -1,10 +1,19 @@
-from typing import Protocol
 from functools import lru_cache
+from typing import Protocol
 
 import numpy as np
 from numpy.fft import fft, ifft
 
-from lle_solver.types import StepSize, State, LinearOperator, Wavenumbers, Symbol, NonlinearTerm, Integrator
+from lle_solver.types import (
+    Integrator,
+    LinearOperator,
+    NonlinearTerm,
+    State,
+    StepSize,
+    Symbol,
+    Wavenumbers,
+)
+
 
 class Step(Protocol):
     def __call__(self, state: State, step_size: StepSize) -> State: ...

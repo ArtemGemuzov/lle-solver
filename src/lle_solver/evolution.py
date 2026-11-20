@@ -1,9 +1,8 @@
 from collections.abc import Iterator
 from typing import TypeAlias
 
-from lle_solver.types import State, StepSize, Time
 from lle_solver.split_schemes import SplitScheme
-
+from lle_solver.types import State, StepSize, Time
 
 Frame: TypeAlias = tuple[int, Time, State]
 

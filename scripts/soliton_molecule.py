@@ -1,12 +1,11 @@
 import numpy as np
+from _common import plot_maps, run
 
 from lle_solver.grid import PeriodicGrid
 from lle_solver.integrators import rk2_step
 from lle_solver.lle import LugiatoLefever
 from lle_solver.split_schemes import LieTrotterSplitStep
 from lle_solver.steps import FourierStep, IntegratorStep
-
-from _common import plot_maps, run
 
 detuning = 2.0
 pump_amplitude = 1.37225

@@ -3,7 +3,12 @@ from typing import overload
 import numpy as np
 from numpy.typing import NDArray
 
-from lle_solver.simulations.evolution import Field, FieldEvolution, Intensity, IntensityEvolution
+from lle_solver.simulations.evolution import (
+    Field,
+    FieldEvolution,
+    Intensity,
+    IntensityEvolution,
+)
 
 
 def time_mask(times: NDArray[np.float64], start: float, end: float) -> NDArray[np.bool_]:

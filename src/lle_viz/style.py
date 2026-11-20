@@ -1,11 +1,11 @@
 """Оформление графиков и таблиц в исследовательских блокнотах."""
 
-from pathlib import Path
 from collections.abc import Sequence
-from matplotlib.axes import Axes
-from matplotlib.figure import Figure
+from pathlib import Path
 
 import matplotlib.pyplot as plt
+from matplotlib.axes import Axes
+from matplotlib.figure import Figure
 from matplotlib.ticker import NullFormatter
 
 

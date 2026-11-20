@@ -1,6 +1,6 @@
-from lle_solver.types import Wavenumbers, Symbol, State
-
 import numpy as np
+
+from lle_solver.types import State, Symbol, Wavenumbers
 
 
 class LugiatoLefever:

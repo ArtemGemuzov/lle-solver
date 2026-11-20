@@ -1,7 +1,7 @@
 from typing import Protocol
 
-from lle_solver.types import State, StepSize
 from lle_solver.steps import Step
+from lle_solver.types import State, StepSize
 
 
 class SplitScheme(Protocol):

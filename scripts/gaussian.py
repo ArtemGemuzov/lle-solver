@@ -1,15 +1,15 @@
 """Эволюция гауссова импульса."""
 
-from lle_runs.config import config_from_cli
-from lle_runs.runs import create_run
 import numpy as np
 
-from lle_solver.simulations.gaussian import GaussianConfig
-from lle_solver.simulations.evolution import FieldEvolution
-from lle_solver.simulations.storage import save_evolution
+from lle_runs.config import config_from_cli
+from lle_runs.runs import create_run
 from lle_solver.grid import PeriodicGrid
 from lle_solver.integrators import rk4_step
 from lle_solver.lle import LugiatoLefever
+from lle_solver.simulations.evolution import FieldEvolution
+from lle_solver.simulations.gaussian import GaussianConfig
+from lle_solver.simulations.storage import save_evolution
 from lle_solver.split_schemes import StrangSplitStep
 from lle_solver.steps import FourierStep, IntegratorStep
 

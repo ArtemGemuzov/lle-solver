@@ -1,10 +1,14 @@
 """Сценарии запуска PINN для гауссова импульса."""
 
-from pathlib import Path
 import shutil
+from pathlib import Path
 
 from lle_runs.runs import Run, create_run, resume_run
-from lle_solver.simulations.pinn_checkpoint import extend_checkpoint, initial_weights, load_checkpoint
+from lle_solver.simulations.pinn_checkpoint import (
+    extend_checkpoint,
+    initial_weights,
+    load_checkpoint,
+)
 from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
 from lle_solver.simulations.pinn_training import PinnTraining
 

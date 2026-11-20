@@ -8,7 +8,6 @@ from scipy.ndimage import map_coordinates
 
 from lle_solver.grid import uniform_spacing
 
-
 DEFAULT_TIME_TOLERANCE = 1e-10
 
 

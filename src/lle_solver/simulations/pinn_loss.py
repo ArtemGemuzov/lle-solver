@@ -6,7 +6,11 @@ import deepxde as dde
 import numpy as np
 import torch
 
-from lle_solver.simulations.pinn_gaussian import CausalConfig, CausalScheduleConfig, ReLoBRaLoConfig
+from lle_solver.simulations.pinn_gaussian import (
+    CausalConfig,
+    CausalScheduleConfig,
+    ReLoBRaLoConfig,
+)
 
 
 class ReLoBRaLoTimePDE(dde.data.TimePDE):

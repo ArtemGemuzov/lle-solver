@@ -1,7 +1,6 @@
 from lle_analysis.fields import relative_field_l2_error, spatial_contrast
 from lle_solver.simulations.evolution import FieldEvolution, Intensity
 
-
 DEFAULT_STATIONARY_TOLERANCE = 1e-3
 DEFAULT_HOMOGENEOUS_CONTRAST = 0.01
 

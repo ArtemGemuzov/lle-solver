@@ -1,6 +1,6 @@
 import csv
-from math import pi
 import platform
+from math import pi
 
 import deepxde as dde
 import numpy as np
@@ -9,9 +9,14 @@ import torch
 from lle_runs.runs import Run
 from lle_solver.grid import PeriodicGrid
 from lle_solver.simulations.evolution import FieldEvolution
-from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
 from lle_solver.simulations.pinn_checkpoint import PinnCheckpoint
-from lle_solver.simulations.pinn_loss import CausalSchedule, CausalStage, CausalTimePDE, ReLoBRaLoTimePDE
+from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
+from lle_solver.simulations.pinn_loss import (
+    CausalSchedule,
+    CausalStage,
+    CausalTimePDE,
+    ReLoBRaLoTimePDE,
+)
 from lle_solver.simulations.storage import save_evolution
 
 

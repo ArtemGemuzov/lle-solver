@@ -1,11 +1,12 @@
 from collections.abc import Sequence
+
+import numpy as np
 from matplotlib.axes import Axes
 from matplotlib.collections import PathCollection, QuadMesh
+from matplotlib.colors import BoundaryNorm, ListedColormap
 from matplotlib.container import BarContainer
 from matplotlib.lines import Line2D
 from numpy.typing import ArrayLike, NDArray
-import numpy as np
-from matplotlib.colors import ListedColormap, BoundaryNorm
 
 from lle_solver.simulations.evolution import Intensity, IntensityEvolution
 

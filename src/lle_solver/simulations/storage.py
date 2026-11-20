@@ -4,7 +4,6 @@ import numpy as np
 
 from lle_solver.simulations.evolution import FieldEvolution
 
-
 _EVOLUTION_FILENAME = "field_evolution.npz"
 
 

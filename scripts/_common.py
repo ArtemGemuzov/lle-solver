@@ -1,10 +1,10 @@
 from dataclasses import dataclass
 
+import matplotlib.pyplot as plt
 import numpy as np
+from matplotlib.colors import LogNorm
 from numpy.fft import fft
 from scipy.signal import find_peaks
-import matplotlib.pyplot as plt
-from matplotlib.colors import LogNorm
 
 from lle_solver.evolution import SplitScheme, evolve
 from lle_solver.grid import PeriodicGrid

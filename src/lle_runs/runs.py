@@ -1,18 +1,17 @@
-from contextlib import contextmanager
-from collections.abc import Generator, Mapping
-from dataclasses import dataclass
-from datetime import datetime, timezone
 import json
 import os
+from collections.abc import Generator, Mapping
+from contextlib import contextmanager
+from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
-from pydantic import BaseModel
 import yaml
+from pydantic import BaseModel
 
 from lle_runs.config import C, load_config
-from lle_runs.project import find_project_root, get_runs_dir
 from lle_runs.git import Git
-
+from lle_runs.project import find_project_root, get_runs_dir
 
 PROJECT_ROOT = find_project_root(Path(__file__))
 RUNS_ROOT = get_runs_dir(Path(__file__))

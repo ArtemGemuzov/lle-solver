@@ -1,15 +1,14 @@
 """Полное состояние PINN и атомарная замена последнего чекпоинта."""
 
 import os
-from pathlib import Path
 import random
+from pathlib import Path
 
 import deepxde as dde
 import numpy as np
 import torch
 
 from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
-
 
 FORMAT_VERSION = 1
 DATA_FIELDS = (

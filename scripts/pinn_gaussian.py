@@ -17,8 +17,8 @@ transfer переносит веса и начинает обучение с ш�
 """
 
 import argparse
-from pathlib import Path
 import sys
+from pathlib import Path
 
 from lle_runs.config import load_config
 from lle_runs.runs import get_run

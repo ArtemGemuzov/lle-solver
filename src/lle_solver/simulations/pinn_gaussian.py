@@ -4,7 +4,11 @@ from typing import Annotated, Self
 from pydantic import Field, model_validator
 
 from lle_runs.config import Config
-from lle_solver.simulations.configs import EquationConfig, GaussianPulseConfig, RecordingConfig
+from lle_solver.simulations.configs import (
+    EquationConfig,
+    GaussianPulseConfig,
+    RecordingConfig,
+)
 
 
 class PinnDomainConfig(Config):

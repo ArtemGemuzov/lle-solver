@@ -4,7 +4,13 @@ import numpy as np
 from pydantic import Field, model_validator
 
 from lle_runs.config import Config
-from lle_solver.simulations.configs import EquationConfig, GridConfig, GaussianPulseConfig, SolverConfig, RecordingConfig
+from lle_solver.simulations.configs import (
+    EquationConfig,
+    GaussianPulseConfig,
+    GridConfig,
+    RecordingConfig,
+    SolverConfig,
+)
 
 
 class GaussianConfig(Config):
