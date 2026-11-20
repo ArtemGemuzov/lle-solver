@@ -6,19 +6,21 @@ from pathlib import Path
 import deepxde as dde
 import torch
 
-from lle.pinn.checkpoint import load_checkpoint
-from lle.pinn.loss import CausalTimePDE, ReLoBRaLoTimePDE
+from lle.physics.equation import LLEParameters
+from lle.physics.initial import GaussianPulse
+from lle.pinn.features import PeriodicFeatures
+from lle.pinn.loss.causal import CausalTimePDE
+from lle.pinn.loss.relobralo import ReLoBRaLoTimePDE
 from lle.pinn.model import (
     build_network,
-    gaussian_initial,
-    initial_weights,
     lle_residual,
 )
 from lle.pinn.training import PinnTraining, configure_adam
+from lle.runs.checkpoint import load_checkpoint, restore_rng, save_checkpoint
 from lle.runs.runs import PROJECT_ROOT, Run, create_run, get_run, resume_run
 from lle.workflows.pinn_gaussian.config import PinnGaussianConfig
 
-from .outputs import save_results, save_stage, training_runtime
+from .outputs import TrainingCheckpoint, save_results, save_stage, training_runtime
 
 # Сохраняем идентификатор сценария для совместимости с существующими Run.
 DEFAULT_SCRIPT = PROJECT_ROOT / "scripts/pinn_gaussian.py"
@@ -36,24 +38,18 @@ def _build_model(config: PinnGaussianConfig) -> dde.Model:
         dde.geometry.Interval(-half_length, half_length),
         dde.geometry.TimeDomain(0, domain.time_end),
     )
-    residual = lle_residual(
-        pump_amplitude=config.equation.pump_amplitude,
-        detuning=config.equation.detuning,
-        beta2=config.equation.beta2,
-    )
-    initial = gaussian_initial(
-        amplitude=config.initial.amplitude, width=config.initial.width
-    )
+    residual = lle_residual(LLEParameters(**config.equation.model_dump()))
+    initial = GaussianPulse(**config.initial.model_dump())
     conditions = [
         dde.icbc.IC(
             geometry,
-            lambda points: initial(points)[:, :1],
+            lambda points: initial(points[:, :1]).real,
             lambda _, on: on,
             component=0,
         ),
         dde.icbc.IC(
             geometry,
-            lambda points: initial(points)[:, 1:2],
+            lambda points: initial(points[:, :1]).imag,
             lambda _, on: on,
             component=1,
         ),
@@ -90,13 +86,15 @@ def _build_model(config: PinnGaussianConfig) -> dde.Model:
     else:
         data = dde.data.TimePDE(geometry, residual, conditions, **options)
     # Сохраняем порядок генерации точек и инициализации весов для воспроизводимости.
+    features = PeriodicFeatures(
+        domain.length, domain.time_end, config.network.spatial_harmonics
+    )
     net = build_network(
+        input_size=features.output_size,
         hidden_layers=config.network.hidden_layers,
         hidden_width=config.network.hidden_width,
-        spatial_harmonics=config.network.spatial_harmonics,
-        length=domain.length,
-        time_end=domain.time_end,
     )
+    net.apply_feature_transform(features)
     return dde.Model(data, net)
 
 
@@ -114,14 +112,11 @@ def _training(run: Run, config: PinnGaussianConfig) -> PinnTraining:
         learning_rate=config.training.learning_rate,
         initial_weight=config.training.initial_weight,
     )
-    return PinnTraining(
+    training = PinnTraining(
         model,
         iterations=config.training.iterations,
         resample_every=config.training.resample_every,
         log_every=config.training.log_every,
-        checkpoint_path=run.path / "checkpoint.pt",
-        checkpoint_every_steps=config.checkpoint.every_steps,
-        parameters=config.model_dump(mode="json"),
         causal_epsilons=config.loss.causal.schedule.epsilons
         if config.loss.causal and config.loss.causal.schedule
         else None,
@@ -131,9 +126,19 @@ def _training(run: Run, config: PinnGaussianConfig) -> PinnTraining:
         on_stage_end=lambda stage: save_stage(run, config, model, stage),
     )
 
+    callback = TrainingCheckpoint(run, config, training)
+    callback.set_model(model)
+    training.callbacks.append(callback)
+    return training
+
 
 def _fit(run: Run, config: PinnGaussianConfig, training: PinnTraining) -> None:
     history = training.fit()
+    save_checkpoint(
+        run.path / "checkpoint.pt",
+        training.state_dict(),
+        config.model_dump(mode="json"),
+    )
     save_results(run, config, training, history)
 
 
@@ -171,8 +176,9 @@ def resume(source: Run | str) -> Run:
                 "Checkpoint configuration differs from the run configuration"
             )
         training = _training(run, config)
-        training.checkpoint.restore(saved)
-        schedule = training.checkpoint.schedule
+        training.load_state_dict(saved)
+        restore_rng(saved)
+        schedule = training.schedule
         clear_resumed_outputs(run.path, len(schedule.history) if schedule else 0)
         _fit(run, config, training)
     return run
@@ -201,8 +207,13 @@ def extend(
     }
     with create_run(config, script=script, extra_metadata=metadata) as run:
         training = _training(run, config)
-        training.checkpoint.restore(saved)
-        training.checkpoint.save()
+        training.load_state_dict(saved)
+        restore_rng(saved)
+        save_checkpoint(
+            run.path / "checkpoint.pt",
+            training.state_dict(),
+            config.model_dump(mode="json"),
+        )
         _fit(run, config, training)
     return run
 
@@ -225,10 +236,15 @@ def transfer(
         raise ValueError(
             "Weight transfer requires matching domain.length for the spatial harmonics"
         )
-    weights = initial_weights(
-        parent["model"],
-        time_ratio=config.domain.time_end / source_config.domain.time_end,
+    source_features = PeriodicFeatures(
+        source_config.domain.length,
+        source_config.domain.time_end,
+        source_config.network.spatial_harmonics,
     )
+    target_features = PeriodicFeatures(
+        config.domain.length, config.domain.time_end, config.network.spatial_harmonics
+    )
+    weights = source_features.transfer_weights(parent["model"], target_features)
     metadata = {
         "parent_run_id": source.id,
         "parent_step": parent["train_state"]["step"],

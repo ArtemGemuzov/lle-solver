@@ -1,11 +1,14 @@
+from functools import partial
+
 import numpy as np
 from _common import plot_maps, run
 
 from lle.numerics.grid import PeriodicGrid
 from lle.numerics.integrators import rk2_step
-from lle.numerics.lle import LugiatoLefever
+from lle.numerics.lle import linear_operator, nonlinear_term
 from lle.numerics.split_schemes import LieTrotterSplitStep
 from lle.numerics.steps import FourierStep, IntegratorStep
+from lle.physics.equation import LLEParameters
 
 detuning = 2.0
 pump_amplitude = 1.37225
@@ -17,10 +20,10 @@ time_step = 1e-3
 time_end = 30.0
 
 grid = PeriodicGrid(num_points, length=2)
-equation = LugiatoLefever(detuning, pump_amplitude, beta2)
+equation = LLEParameters(detuning, pump_amplitude, beta2)
 scheme = LieTrotterSplitStep(
-    FourierStep(equation.linear_operator, grid.wavenumbers),
-    IntegratorStep(equation.nonlinear_term, rk2_step),
+    FourierStep(partial(linear_operator, equation), grid.wavenumbers),
+    IntegratorStep(partial(nonlinear_term, equation), rk2_step),
 )
 
 gaussian_pulse = (0.5 + np.exp(-((grid.theta / 0.85) ** 2))).astype(np.complex128)

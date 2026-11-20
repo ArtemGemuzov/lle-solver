@@ -8,9 +8,10 @@ import numpy as np
 import torch
 from deepxde.model import LossHistory
 
-from lle.fields import FieldEvolution
-from lle.pinn.loss import CausalStage
+from lle.physics.fields import FieldEvolution
+from lle.pinn.loss.schedule import CausalStage
 from lle.pinn.training import PinnTraining, predict_evolution
+from lle.runs.checkpoint import save_checkpoint
 from lle.runs.runs import Run
 from lle.storage import save_evolution
 
@@ -57,7 +58,7 @@ def save_results(
     run: Run, config: PinnGaussianConfig, training: PinnTraining, history: LossHistory
 ) -> None:
     model = training.model
-    schedule = training.checkpoint.schedule
+    schedule = training.schedule
     causal = config.loss.causal
     losses = np.column_stack((history.steps, history.loss_train, history.loss_test))
     np.savetxt(
@@ -100,3 +101,42 @@ def save_results(
         )
     model.save(str(run.path / "model"), use_iteration_suffix=False)
     save_evolution(run.path, predict(model, config))
+
+
+class TrainingCheckpoint(dde.callbacks.Callback):
+    """Организует периодическое сохранение состояния выбранного Run."""
+
+    def __init__(self, run: Run, config: PinnGaussianConfig, training: PinnTraining):
+        super().__init__()
+        self.run = run
+        self.config = config
+        self.training = training
+        self._stage_count = 0
+        self._last_saved_step = None
+
+    def save(self) -> None:
+        save_checkpoint(
+            self.run.path / "checkpoint.pt",
+            self.training.state_dict(),
+            self.config.model_dump(mode="json"),
+        )
+        self._last_saved_step = self.model.train_state.step
+
+    def on_train_begin(self) -> None:
+        schedule = self.training.schedule
+        self._stage_count = len(schedule.history) if schedule else 0
+
+    def on_epoch_end(self) -> None:
+        schedule = self.training.schedule
+        stages = len(schedule.history) if schedule else 0
+        if (
+            self.model.train_state.step % self.config.checkpoint.every_steps == 0
+            or stages != self._stage_count
+            or self.training.complete
+        ):
+            self.save()
+        self._stage_count = stages
+
+    def on_train_end(self) -> None:
+        if self._last_saved_step != self.model.train_state.step:
+            self.save()

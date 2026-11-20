@@ -6,7 +6,7 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.ndimage import map_coordinates
 
-from lle.numerics.grid import uniform_spacing
+from lle.physics.geometry import uniform_spacing
 
 DEFAULT_TIME_TOLERANCE = 1e-10
 

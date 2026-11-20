@@ -8,7 +8,7 @@ from matplotlib.container import BarContainer
 from matplotlib.lines import Line2D
 from numpy.typing import ArrayLike, NDArray
 
-from lle.fields import Intensity, IntensityEvolution
+from lle.physics.fields import Intensity, IntensityEvolution
 
 
 def cell_edges(values: ArrayLike, *, logarithmic: bool = False) -> NDArray[np.float64]:

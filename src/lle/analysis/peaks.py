@@ -2,8 +2,8 @@ import numpy as np
 from numpy.typing import NDArray
 from scipy.signal import find_peaks
 
-from lle.numerics.grid import uniform_spacing
-from lle.fields import Intensity
+from lle.physics.geometry import uniform_spacing
+from lle.physics.fields import Intensity
 
 DEFAULT_PEAK_PROMINENCE = 0.25
 

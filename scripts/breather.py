@@ -1,3 +1,5 @@
+from functools import partial
+
 import numpy as np
 from _viewer import FrameRecorder, write_viewer
 from scipy.signal import find_peaks
@@ -5,9 +7,10 @@ from scipy.signal import find_peaks
 from lle.numerics.evolution import evolve
 from lle.numerics.grid import PeriodicGrid
 from lle.numerics.integrators import rk4_step
-from lle.numerics.lle import LugiatoLefever
+from lle.numerics.lle import linear_operator, nonlinear_term
 from lle.numerics.split_schemes import StrangSplitStep
 from lle.numerics.steps import FourierStep, IntegratorStep
+from lle.physics.equation import LLEParameters
 
 SEED = 42
 
@@ -24,10 +27,10 @@ frame_interval = 0.02
 transient_time = 1.0
 
 grid = PeriodicGrid(num_points, length=window)
-equation = LugiatoLefever(detuning, pump_amplitude, beta2)
+equation = LLEParameters(detuning, pump_amplitude, beta2)
 scheme = StrangSplitStep(
-    FourierStep(equation.linear_operator, grid.wavenumbers),
-    IntegratorStep(equation.nonlinear_term, rk4_step),
+    FourierStep(partial(linear_operator, equation), grid.wavenumbers),
+    IntegratorStep(partial(nonlinear_term, equation), rk4_step),
 )
 
 # Приближённое аналитическое решение для солитона

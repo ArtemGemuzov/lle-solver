@@ -1,15 +1,18 @@
+from functools import partial
 from typing import Self
 
 import numpy as np
 from pydantic import Field, model_validator
 
 from lle.config import Config
-from lle.fields import FieldEvolution
 from lle.numerics.grid import PeriodicGrid
 from lle.numerics.integrators import rk4_step
-from lle.numerics.lle import LugiatoLefever
+from lle.numerics.lle import linear_operator, nonlinear_term
 from lle.numerics.split_schemes import StrangSplitStep
 from lle.numerics.steps import FourierStep, IntegratorStep
+from lle.physics.equation import LLEParameters
+from lle.physics.fields import FieldEvolution
+from lle.physics.initial import GaussianPulse
 from lle.workflows.parameters import (
     EquationConfig,
     GaussianPulseConfig,
@@ -52,19 +55,13 @@ def simulate(p: SsfmGaussianConfig) -> FieldEvolution:
     record_step = round(p.recording.interval / dt)
 
     grid = PeriodicGrid(p.grid.num_points, p.grid.length)
-    equation = LugiatoLefever(
-        p.equation.detuning,
-        p.equation.pump_amplitude,
-        p.equation.beta2,
-    )
+    equation = LLEParameters(**p.equation.model_dump())
     scheme = StrangSplitStep(
-        FourierStep(equation.linear_operator, grid.wavenumbers),
-        IntegratorStep(equation.nonlinear_term, rk4_step),
+        FourierStep(partial(linear_operator, equation), grid.wavenumbers),
+        IntegratorStep(partial(nonlinear_term, equation), rk4_step),
     )
 
-    field = (
-        p.initial.amplitude * np.exp(-(grid.theta**2) / (2 * p.initial.width**2))
-    ).astype(np.complex128)
+    field = GaussianPulse(**p.initial.model_dump())(grid.theta)
 
     steps = np.arange(0, total + 1, record_step)
     fields = np.empty((steps.size, grid.num_points), dtype=np.complex128)

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import numpy as np
 
-from lle.fields import FieldEvolution
+from lle.physics.fields import FieldEvolution
 
 _EVOLUTION_FILENAME = "field_evolution.npz"
 

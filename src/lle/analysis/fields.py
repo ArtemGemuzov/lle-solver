@@ -3,7 +3,7 @@ from typing import overload
 import numpy as np
 from numpy.typing import NDArray
 
-from lle.fields import (
+from lle.physics.fields import (
     Field,
     FieldEvolution,
     Intensity,

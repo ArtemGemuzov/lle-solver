@@ -1,19 +1,19 @@
 """Обучение модели и предсказание поля без зависимости от Run."""
 
 from collections.abc import Callable, Sequence
-from pathlib import Path
-from typing import Any
 
 import deepxde as dde
 import numpy as np
 import torch
 from deepxde.model import LossHistory
 
-from lle.fields import FieldEvolution
 from lle.numerics.grid import PeriodicGrid
-from lle.pinn.checkpoint import PinnCheckpoint
-from lle.pinn.loss import CausalSchedule, CausalStage, CausalTimePDE, ReLoBRaLoTimePDE
+from lle.physics.fields import FieldEvolution
+from lle.pinn.loss.causal import CausalTimePDE
+from lle.pinn.loss.relobralo import ReLoBRaLoTimePDE
+from lle.pinn.loss.schedule import CausalSchedule, CausalStage
 from lle.pinn.model import predict_field
+from lle.pinn.state import TrainingState
 
 
 def configure_adam(
@@ -57,9 +57,6 @@ class PinnTraining:
         iterations: int,
         resample_every: int,
         log_every: int,
-        checkpoint_path: Path,
-        checkpoint_every_steps: int,
-        parameters: dict[str, Any],
         causal_epsilons: Sequence[float] | None = None,
         causal_threshold: float = 0.99,
         on_stage_end: Callable[[CausalStage], None] | None = None,
@@ -81,25 +78,28 @@ class PinnTraining:
                 on_stage_end or (lambda stage: None),
             )
             callbacks.append(schedule)
-        checkpoint = PinnCheckpoint(
-            checkpoint_path,
-            parameters,
-            resampler,
-            schedule,
-            iterations=iterations,
-            every_steps=checkpoint_every_steps,
-        )
-        checkpoint.set_model(model)
-        self.checkpoint = checkpoint
-        self.callbacks = [*callbacks, checkpoint]
+        self.state = TrainingState(resampler, schedule, iterations)
+        self.state.set_model(model)
+        self.callbacks = [*callbacks, self.state]
+
+    @property
+    def complete(self) -> bool:
+        return self.state.complete
+
+    @property
+    def schedule(self) -> CausalSchedule | None:
+        return self.state.schedule
+
+    def state_dict(self) -> dict:
+        return self.state.state_dict()
+
+    def load_state_dict(self, state: dict) -> None:
+        self.state.load_state_dict(state)
 
     def fit(self) -> LossHistory:
         model = self.model
-        checkpoint = self.checkpoint
-        schedule = checkpoint.schedule
-        remaining = (
-            0 if checkpoint.complete else self.iterations - model.train_state.step
-        )
+        schedule = self.schedule
+        remaining = 0 if self.complete else self.iterations - model.train_state.step
         history, state = model.train(
             iterations=remaining,
             display_every=self.log_every,
@@ -107,5 +107,4 @@ class PinnTraining:
         )
         if schedule is not None and history.steps[-1] != state.step:
             history, _ = model.train(iterations=0, verbose=0)
-            checkpoint.save()
         return history

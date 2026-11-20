@@ -1,12 +1,15 @@
+from functools import partial
+
 import numpy as np
 from _common import count_peaks
 from _viewer import FrameRecorder, write_viewer
 
 from lle.numerics.grid import PeriodicGrid
 from lle.numerics.integrators import rk4_step
-from lle.numerics.lle import LugiatoLefever
+from lle.numerics.lle import linear_operator, nonlinear_term
 from lle.numerics.split_schemes import SplitScheme, StrangSplitStep
 from lle.numerics.steps import FourierStep, IntegratorStep
+from lle.physics.equation import LLEParameters
 
 SEED = 42
 
@@ -37,10 +40,10 @@ grid = PeriodicGrid(num_points, length=window)
 
 
 def build_scheme(detuning: float) -> SplitScheme:
-    equation = LugiatoLefever(detuning, pump_amplitude, beta2)
+    equation = LLEParameters(detuning, pump_amplitude, beta2)
     return StrangSplitStep(
-        FourierStep(equation.linear_operator, grid.wavenumbers),
-        IntegratorStep(equation.nonlinear_term, rk4_step),
+        FourierStep(partial(linear_operator, equation), grid.wavenumbers),
+        IntegratorStep(partial(nonlinear_term, equation), rk4_step),
     )
 
 
