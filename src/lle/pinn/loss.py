@@ -1,5 +1,6 @@
 """Адаптивное взвешивание потерь PINN на бэкенде PyTorch."""
 
+from collections.abc import Callable, Sequence
 from typing import NamedTuple
 
 import deepxde as dde
@@ -10,9 +11,19 @@ import torch
 class ReLoBRaLoTimePDE(dde.data.TimePDE):
     """Обновляет общий вес каждой пары компонент LLE и начального условия."""
 
-    def __init__(self, *args, balancing, seed: int, **kwargs):
+    def __init__(
+        self,
+        *args,
+        alpha: float,
+        temperature: float,
+        lookback_probability: float,
+        seed: int,
+        **kwargs,
+    ):
         super().__init__(*args, **kwargs)
-        self.balancing = balancing
+        self.alpha = alpha
+        self.temperature = temperature
+        self.lookback_probability = lookback_probability
         self.rng = np.random.default_rng(seed)
         self._weight_history = []
         self.initial = None
@@ -43,7 +54,7 @@ class ReLoBRaLoTimePDE(dde.data.TimePDE):
 
     def relative_weights(self, current, reference):
         ratios = current / reference.clamp_min(1e-12)
-        logits = (ratios - ratios.max()) / self.balancing.temperature
+        logits = (ratios - ratios.max()) / self.temperature
         return current.numel() * torch.softmax(logits, dim=0)
 
     def losses_train(self, targets, outputs, loss_fn, inputs, model, aux=None):
@@ -59,10 +70,10 @@ class ReLoBRaLoTimePDE(dde.data.TimePDE):
             self.weights = torch.ones_like(current)
         else:
             historical = self.weights
-            if self.rng.random() < self.balancing.lookback_probability:
+            if self.rng.random() < self.lookback_probability:
                 historical = self.relative_weights(current, self.initial)
             recent = self.relative_weights(current, self.previous)
-            alpha = self.balancing.alpha
+            alpha = self.alpha
             self.weights = alpha * historical + (1 - alpha) * recent
 
         self.previous = current
@@ -79,12 +90,10 @@ class ReLoBRaLoTimePDE(dde.data.TimePDE):
 class CausalTimePDE(dde.data.TimePDE):
     """Взвешивает невязку LLE по последовательным временным полосам."""
 
-    def __init__(self, *args, causal, time_end: float, **kwargs):
+    def __init__(self, *args, bands: int, epsilon: float, time_end: float, **kwargs):
         super().__init__(*args, **kwargs)
-        self.causal = causal
-        self.epsilon = (
-            causal.epsilon if causal.schedule is None else causal.schedule.epsilons[0]
-        )
+        self.bands = bands
+        self.epsilon = epsilon
         self.time_end = time_end
         self._weight_history = []
         self.update_pending = False
@@ -103,7 +112,7 @@ class CausalTimePDE(dde.data.TimePDE):
     def losses_train(self, targets, outputs, loss_fn, inputs, model, aux=None):
         # DeepXDE добавляет копии точек IC перед точками невязки уравнения.
         times = inputs[sum(self.num_bcs) :, 1]
-        band_count = self.causal.bands
+        band_count = self.bands
         bands = (times / self.time_end * band_count).long().clamp_max(band_count - 1)
         zeros = times.new_zeros(band_count)
         counts = zeros.index_add(0, bands, torch.ones_like(times))
@@ -136,7 +145,7 @@ class CausalTimePDE(dde.data.TimePDE):
 
     @property
     def last_min_weight(self) -> float:
-        return self._weight_history[-1][-self.causal.bands :].min().item()
+        return self._weight_history[-1][-self.bands :].min().item()
 
 
 class CausalStage(NamedTuple):
@@ -149,9 +158,16 @@ class CausalStage(NamedTuple):
 
 
 class CausalSchedule(dde.callbacks.Callback):
-    def __init__(self, config, stage_limit: int, on_stage_end):
+    def __init__(
+        self,
+        epsilons: Sequence[float],
+        threshold: float,
+        stage_limit: int,
+        on_stage_end: Callable[[CausalStage], None],
+    ):
         super().__init__()
-        self.config = config
+        self.epsilons = tuple(epsilons)
+        self.threshold = threshold
         self.stage_limit = stage_limit
         self.on_stage_end = on_stage_end
         self.history: list[CausalStage] = []
@@ -170,7 +186,7 @@ class CausalSchedule(dde.callbacks.Callback):
     def on_batch_end(self):
         step = self.model.train_state.step
         min_weight = self.model.data.last_min_weight
-        reached_threshold = min_weight > self.config.threshold
+        reached_threshold = min_weight > self.threshold
         if not reached_threshold and step - self.first_step + 1 < self.stage_limit:
             return
 
@@ -184,8 +200,8 @@ class CausalSchedule(dde.callbacks.Callback):
         )
         self.history.append(stage)
         self.on_stage_end(stage)
-        if stage.number == len(self.config.epsilons):
+        if stage.number == len(self.epsilons):
             self.model.stop_training = True
         else:
             self.first_step = step + 1
-            self.model.data.epsilon = self.config.epsilons[stage.number]
+            self.model.data.epsilon = self.epsilons[stage.number]

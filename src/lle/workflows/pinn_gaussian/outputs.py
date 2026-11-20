@@ -3,17 +3,23 @@
 import csv
 import platform
 
+import deepxde as dde
 import numpy as np
 import torch
+from deepxde.model import LossHistory
 
+from lle.fields import FieldEvolution
 from lle.pinn.loss import CausalStage
-from lle.pinn.training import predict_evolution
+from lle.pinn.training import PinnTraining, predict_evolution
+from lle.runs.runs import Run
 from lle.storage import save_evolution
 
+from .config import PinnGaussianConfig
 
-def predict(model, config):
+
+def predict(model: dde.Model, config: PinnGaussianConfig) -> FieldEvolution:
     return predict_evolution(
-        model,
+        model.net,
         length=config.domain.length,
         time_end=config.domain.time_end,
         interval=config.recording.interval,
@@ -21,7 +27,9 @@ def predict(model, config):
     )
 
 
-def save_stage(run, config, model, stage):
+def save_stage(
+    run: Run, config: PinnGaussianConfig, model: dde.Model, stage: CausalStage
+) -> None:
     stage_dir = run.path / f"stage_{stage.number:02d}"
     stage_dir.mkdir()
     save_evolution(stage_dir, predict(model, config))
@@ -45,7 +53,9 @@ def training_runtime(device: torch.device) -> dict[str, str]:
     }
 
 
-def save_results(run, config, training, history) -> None:
+def save_results(
+    run: Run, config: PinnGaussianConfig, training: PinnTraining, history: LossHistory
+) -> None:
     model = training.model
     schedule = training.checkpoint.schedule
     causal = config.loss.causal

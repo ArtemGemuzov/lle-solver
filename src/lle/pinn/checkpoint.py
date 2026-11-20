@@ -96,7 +96,7 @@ class PinnCheckpoint(dde.callbacks.Callback):
     def complete(self):
         return self.model.train_state.step >= self.iterations or (
             self.schedule is not None
-            and len(self.schedule.history) == len(self.schedule.config.epsilons)
+            and len(self.schedule.history) == len(self.schedule.epsilons)
         )
 
     def save(self):

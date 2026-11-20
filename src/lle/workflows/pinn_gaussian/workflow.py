@@ -7,8 +7,14 @@ import deepxde as dde
 import torch
 
 from lle.pinn.checkpoint import load_checkpoint
-from lle.pinn.model import build_model, initial_weights
-from lle.pinn.training import PinnTraining
+from lle.pinn.loss import CausalTimePDE, ReLoBRaLoTimePDE
+from lle.pinn.model import (
+    build_network,
+    gaussian_initial,
+    initial_weights,
+    lle_residual,
+)
+from lle.pinn.training import PinnTraining, configure_adam
 from lle.runs.runs import PROJECT_ROOT, Run, create_run, get_run, resume_run
 from lle.workflows.pinn_gaussian.config import PinnGaussianConfig
 
@@ -22,7 +28,79 @@ def _source(source: Run | str) -> Run:
     return get_run(source) if isinstance(source, str) else source
 
 
-def _training(run, config):
+def _build_model(config: PinnGaussianConfig) -> dde.Model:
+    """Собирает обучающую задачу и выбирает взвешивание потерь."""
+    domain = config.domain
+    half_length = domain.length / 2
+    geometry = dde.geometry.GeometryXTime(
+        dde.geometry.Interval(-half_length, half_length),
+        dde.geometry.TimeDomain(0, domain.time_end),
+    )
+    residual = lle_residual(
+        pump_amplitude=config.equation.pump_amplitude,
+        detuning=config.equation.detuning,
+        beta2=config.equation.beta2,
+    )
+    initial = gaussian_initial(
+        amplitude=config.initial.amplitude, width=config.initial.width
+    )
+    conditions = [
+        dde.icbc.IC(
+            geometry,
+            lambda points: initial(points)[:, :1],
+            lambda _, on: on,
+            component=0,
+        ),
+        dde.icbc.IC(
+            geometry,
+            lambda points: initial(points)[:, 1:2],
+            lambda _, on: on,
+            component=1,
+        ),
+    ]
+    options = {
+        "num_domain": domain.interior_points,
+        "num_initial": domain.initial_points,
+        "num_test": domain.interior_points,
+        "train_distribution": "pseudo",
+    }
+    balancing = config.loss.relobralo
+    causal = config.loss.causal
+    if balancing is not None:
+        data = ReLoBRaLoTimePDE(
+            geometry,
+            residual,
+            conditions,
+            **options,
+            alpha=balancing.alpha,
+            temperature=balancing.temperature,
+            lookback_probability=balancing.lookback_probability,
+            seed=config.training.seed,
+        )
+    elif causal is not None:
+        data = CausalTimePDE(
+            geometry,
+            residual,
+            conditions,
+            **options,
+            bands=causal.bands,
+            epsilon=causal.schedule.epsilons[0] if causal.schedule else causal.epsilon,
+            time_end=domain.time_end,
+        )
+    else:
+        data = dde.data.TimePDE(geometry, residual, conditions, **options)
+    # Сохраняем порядок генерации точек и инициализации весов для воспроизводимости.
+    net = build_network(
+        hidden_layers=config.network.hidden_layers,
+        hidden_width=config.network.hidden_width,
+        spatial_harmonics=config.network.spatial_harmonics,
+        length=domain.length,
+        time_end=domain.time_end,
+    )
+    return dde.Model(data, net)
+
+
+def _training(run: Run, config: PinnGaussianConfig) -> PinnTraining:
     dde.config.set_random_seed(config.training.seed)
     runtime = training_runtime(torch.get_default_device())
     metadata = run.load_metadata()
@@ -30,26 +108,31 @@ def _training(run, config):
     run.save_metadata(metadata)
     print(f"Запуск: {run.id}", flush=True)
     print(f"Устройство: {runtime['device']} ({runtime['device_name']})", flush=True)
-    model = build_model(
-        equation=config.equation,
-        initial=config.initial,
-        domain=config.domain,
-        network=config.network,
-        training=config.training,
-        loss=config.loss,
+    model = _build_model(config)
+    configure_adam(
+        model,
+        learning_rate=config.training.learning_rate,
+        initial_weight=config.training.initial_weight,
     )
     return PinnTraining(
         model,
-        config.training,
+        iterations=config.training.iterations,
+        resample_every=config.training.resample_every,
+        log_every=config.training.log_every,
         checkpoint_path=run.path / "checkpoint.pt",
         checkpoint_every_steps=config.checkpoint.every_steps,
         parameters=config.model_dump(mode="json"),
-        causal=config.loss.causal,
+        causal_epsilons=config.loss.causal.schedule.epsilons
+        if config.loss.causal and config.loss.causal.schedule
+        else None,
+        causal_threshold=config.loss.causal.schedule.threshold
+        if config.loss.causal and config.loss.causal.schedule
+        else 0.99,
         on_stage_end=lambda stage: save_stage(run, config, model, stage),
     )
 
 
-def _fit(run, config, training):
+def _fit(run: Run, config: PinnGaussianConfig, training: PinnTraining) -> None:
     history = training.fit()
     save_results(run, config, training, history)
 
@@ -70,7 +153,7 @@ def clear_resumed_outputs(path: Path, completed_stages: int) -> None:
             shutil.rmtree(stage)
 
 
-def train(config: PinnGaussianConfig, *, script=DEFAULT_SCRIPT) -> Run:
+def train(config: PinnGaussianConfig, *, script: str | Path = DEFAULT_SCRIPT) -> Run:
     """Обучает новую модель и возвращает завершённый Run."""
     with create_run(config, script=script) as run:
         _fit(run, config, _training(run, config))
@@ -95,7 +178,9 @@ def resume(source: Run | str) -> Run:
     return run
 
 
-def extend(source: Run | str, steps: int, *, script=DEFAULT_SCRIPT) -> Run:
+def extend(
+    source: Run | str, steps: int, *, script: str | Path = DEFAULT_SCRIPT
+) -> Run:
     """Создаёт дочерний Run с дополнительными шагами и состоянием Adam."""
     source = _source(source)
     parent = load_checkpoint(source.path / "checkpoint.pt")
@@ -126,7 +211,7 @@ def transfer(
     source: Run | str,
     config: PinnGaussianConfig | None = None,
     *,
-    script=DEFAULT_SCRIPT,
+    script: str | Path = DEFAULT_SCRIPT,
 ) -> Run:
     """Переносит веса в новый Run; оптимизатор и счётчики создаются заново."""
     source = _source(source)

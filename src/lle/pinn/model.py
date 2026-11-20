@@ -1,21 +1,45 @@
-"""Сеть, периодические признаки и невязка LLE для гауссова импульса."""
+"""Периодическая сеть, начальное условие и невязка LLE."""
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from math import isfinite, pi
 
 import deepxde as dde
 import numpy as np
 import torch
+from deepxde.nn.pytorch import FNN
+from numpy.typing import NDArray
 
-from lle.pinn.loss import CausalTimePDE, ReLoBRaLoTimePDE
+
+def build_network(
+    *,
+    hidden_layers: int,
+    hidden_width: int,
+    spatial_harmonics: int,
+    length: float,
+    time_end: float,
+) -> FNN:
+    """Создаёт сеть без обучающих точек, начальных условий и оптимизатора."""
+    half_length = length / 2
+
+    def periodic_features(points):
+        theta, time = points[:, :1], points[:, 1:2]
+        angle = (pi / half_length) * theta
+        features = [2 * time / time_end - 1]
+        for harmonic in range(1, spatial_harmonics + 1):
+            features.extend((torch.sin(harmonic * angle), torch.cos(harmonic * angle)))
+        return torch.cat(features, dim=1)
+
+    layer_sizes = [1 + 2 * spatial_harmonics]
+    layer_sizes += [hidden_width] * hidden_layers + [2]
+    net = FNN(layer_sizes, "tanh", "Glorot normal")
+    net.apply_feature_transform(periodic_features)
+    return net
 
 
-def build_model(*, equation, initial, domain, network, training, loss):
-    half_length = domain.length / 2
-    geometry = dde.geometry.GeometryXTime(
-        dde.geometry.Interval(-half_length, half_length),
-        dde.geometry.TimeDomain(0, domain.time_end),
-    )
+def lle_residual(
+    *, pump_amplitude: float, detuning: float, beta2: float
+) -> Callable[[torch.Tensor, torch.Tensor], list[torch.Tensor]]:
+    """Возвращает функцию двух компонент невязки LLE."""
 
     def residual(points, field):
         # Координаты в points — физические theta, t. Компоненты поля — u, v.
@@ -24,78 +48,58 @@ def build_model(*, equation, initial, domain, network, training, loss):
         v_t = dde.grad.jacobian(field, points, i=1, j=1)
         u_theta2 = dde.grad.hessian(field, points, component=0, i=0, j=0)
         v_theta2 = dde.grad.hessian(field, points, component=1, i=0, j=0)
-        phase = u**2 + v**2 - equation.detuning
-        dispersion = equation.beta2 / 2
+        phase = u**2 + v**2 - detuning
+        dispersion = beta2 / 2
         return [
-            u_t + u + phase * v - dispersion * v_theta2 - equation.pump_amplitude,
+            u_t + u + phase * v - dispersion * v_theta2 - pump_amplitude,
             v_t + v - phase * u + dispersion * u_theta2,
         ]
 
-    def initial_real(points):
-        theta = points[:, :1]
-        return initial.amplitude * np.exp(-0.5 * (theta / initial.width) ** 2)
+    return residual
 
-    def initial_imag(points):
-        return np.zeros_like(points[:, :1])
 
-    def on_initial(_, is_initial):
-        return is_initial
+def gaussian_initial(
+    *, amplitude: float, width: float
+) -> Callable[[NDArray[np.floating]], NDArray[np.floating]]:
+    """Возвращает действительную и мнимую части гауссова поля в двух столбцах."""
 
-    initial_conditions = [
-        dde.icbc.IC(geometry, initial_real, on_initial, component=0),
-        dde.icbc.IC(geometry, initial_imag, on_initial, component=1),
-    ]
-    data_options = {
-        "num_domain": domain.interior_points,
-        "num_initial": domain.initial_points,
-        "num_test": domain.interior_points,
-        "train_distribution": "pseudo",
-    }
-    balancing = loss.relobralo
-    causal = loss.causal
-    if balancing is not None:
-        data = ReLoBRaLoTimePDE(
-            geometry,
-            residual,
-            initial_conditions,
-            **data_options,
-            balancing=balancing,
-            seed=training.seed,
-        )
-    elif causal is not None:
-        data = CausalTimePDE(
-            geometry,
-            residual,
-            initial_conditions,
-            **data_options,
-            causal=causal,
-            time_end=domain.time_end,
-        )
-    else:
-        data = dde.data.TimePDE(geometry, residual, initial_conditions, **data_options)
+    def initial(points: NDArray[np.floating]) -> NDArray[np.floating]:
+        real = amplitude * np.exp(-0.5 * (points[:, :1] / width) ** 2)
+        return np.column_stack((real, np.zeros_like(real)))
 
-    def periodic_features(points):
-        theta, time = points[:, :1], points[:, 1:2]
-        angle = (pi / half_length) * theta
-        features = [2 * time / domain.time_end - 1]
-        for harmonic in range(1, network.spatial_harmonics + 1):
-            features.extend((torch.sin(harmonic * angle), torch.cos(harmonic * angle)))
-        return torch.cat(features, dim=1)
+    return initial
 
-    layer_sizes = [1 + 2 * network.spatial_harmonics]
-    layer_sizes += [network.hidden_width] * network.hidden_layers + [2]
-    net = dde.nn.FNN(layer_sizes, "tanh", "Glorot normal")
-    net.apply_feature_transform(periodic_features)
-    model = dde.Model(data, net)
-    initial_weight = training.initial_weight if balancing is None else 1.0
-    model.compile(
-        "adam",
-        lr=training.learning_rate,
-        loss_weights=[1.0, 1.0, initial_weight, initial_weight],
-    )
-    if balancing is not None or causal is not None:
-        model.opt.register_step_pre_hook(data.before_optimizer_step)
-    return model
+
+def evaluate_residual(
+    net: torch.nn.Module,
+    points: NDArray[np.floating],
+    residual: Callable[[torch.Tensor, torch.Tensor], list[torch.Tensor]],
+) -> list[NDArray[np.floating]]:
+    """Вычисляет невязку в заданных точках без обучающей задачи и Adam."""
+    net.eval()
+    parameter = next(net.parameters())
+    try:
+        with torch.enable_grad():
+            inputs = torch.as_tensor(
+                points, dtype=parameter.dtype, device=parameter.device
+            ).requires_grad_()
+            return [
+                value.detach().cpu().numpy() for value in residual(inputs, net(inputs))
+            ]
+    finally:
+        dde.grad.clear()
+
+
+def predict_field(
+    net: torch.nn.Module, points: NDArray[np.floating]
+) -> NDArray[np.complex128]:
+    """Предсказывает комплексное поле в точках (theta, t) без оптимизатора."""
+    net.eval()
+    parameter = next(net.parameters())
+    with torch.no_grad():
+        inputs = torch.as_tensor(points, dtype=parameter.dtype, device=parameter.device)
+        values = net(inputs).detach().cpu().numpy().astype(np.float64)
+    return values[:, 0] + 1j * values[:, 1]
 
 
 def initial_weights(
