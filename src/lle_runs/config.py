@@ -8,15 +8,21 @@ from pydantic import BaseModel, ConfigDict
 
 
 class Config(BaseModel):
-    model_config = ConfigDict(extra="forbid", strict=True, frozen=True,
-                              allow_inf_nan=False, validate_default=True)
+    model_config = ConfigDict(
+        extra="forbid",
+        strict=True,
+        frozen=True,
+        allow_inf_nan=False,
+        validate_default=True,
+    )
 
 
 C = TypeVar("C", bound=Config)
 
 
-def load_config(model: type[C], path: Path | None = None,
-                overrides: Sequence[str] = ()) -> C:
+def load_config(
+    model: type[C], path: Path | None = None, overrides: Sequence[str] = ()
+) -> C:
     values = yaml.safe_load(path.read_text(encoding="utf-8")) if path else {}
     if not isinstance(values, dict):
         raise ValueError("Configuration must be a YAML mapping")
@@ -34,7 +40,9 @@ def load_config(model: type[C], path: Path | None = None,
     return model.model_validate(values)
 
 
-def parse_config_args(parser: argparse.ArgumentParser | None = None) -> argparse.Namespace:
+def parse_config_args(
+    parser: argparse.ArgumentParser | None = None,
+) -> argparse.Namespace:
     """Добавляет общие аргументы конфигурации и разбирает командную строку."""
     if parser is None:
         parser = argparse.ArgumentParser()

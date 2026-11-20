@@ -8,10 +8,10 @@ Frame: TypeAlias = tuple[int, Time, State]
 
 
 def evolve(
-        scheme: SplitScheme,
-        state: State,
-        num_steps: int,
-        step_size: StepSize,
+    scheme: SplitScheme,
+    state: State,
+    num_steps: int,
+    step_size: StepSize,
 ) -> Iterator[Frame]:
     yield 0, 0.0, state
     for index in range(1, num_steps + 1):

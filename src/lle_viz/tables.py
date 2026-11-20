@@ -20,17 +20,24 @@ def table_markdown(rows: Iterable[Mapping[str, object]]) -> str:
     headers = list(rows[0])
     values = [headers, ["---"] * len(headers)]
     values.extend([[row[key] for key in headers] for row in rows])
-    return "\n".join(
-        "| " + " | ".join(format_value(v).replace("|", r"\|") for v in row) + " |"
-        for row in values
-    ) + "\n"
+    return (
+        "\n".join(
+            "| " + " | ".join(format_value(v).replace("|", r"\|") for v in row) + " |"
+            for row in values
+        )
+        + "\n"
+    )
 
 
-def save_table(results_dir: Path, name: str, rows: Iterable[Mapping[str, object]]) -> None:
+def save_table(
+    results_dir: Path, name: str, rows: Iterable[Mapping[str, object]]
+) -> None:
     rows = list(rows)
     if not rows:
         return
-    with (results_dir / f"{name}.csv").open("w", encoding="utf-8-sig", newline="") as target:
+    with (results_dir / f"{name}.csv").open(
+        "w", encoding="utf-8-sig", newline=""
+    ) as target:
         writer = csv.DictWriter(target, fieldnames=list(rows[0]))
         writer.writeheader()
         writer.writerows(rows)

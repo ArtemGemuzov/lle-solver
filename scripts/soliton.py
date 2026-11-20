@@ -31,19 +31,33 @@ perturbation_amplitude = 2.0
 perturbation_width = np.pi / 5
 
 rng = np.random.RandomState(SEED)
-field = np.sqrt(init_intensity) * np.ones(num_points) + noise_level * rng.randn(num_points)
+field = np.sqrt(init_intensity) * np.ones(num_points) + noise_level * rng.randn(
+    num_points
+)
 field = field.astype(np.complex128)
 field[np.abs(grid.theta) < perturbation_width] = perturbation_amplitude
 
 field, history = run(
-    scheme, grid, field, time_step,
-    round(time_end / time_step), title="soliton,",
+    scheme,
+    grid,
+    field,
+    time_step,
+    round(time_end / time_step),
+    title="soliton,",
 )
 
 np.savez(
-    "soliton.npz", field=field, times=history.times, energy=history.energy,
-    detuning=detuning, pump_amplitude=pump_amplitude, beta2=beta2,
-    num_points=num_points, time_step=time_step, seed=SEED,
-    perturbation_amplitude=perturbation_amplitude, perturbation_width=perturbation_width,
+    "soliton.npz",
+    field=field,
+    times=history.times,
+    energy=history.energy,
+    detuning=detuning,
+    pump_amplitude=pump_amplitude,
+    beta2=beta2,
+    num_points=num_points,
+    time_step=time_step,
+    seed=SEED,
+    perturbation_amplitude=perturbation_amplitude,
+    perturbation_width=perturbation_width,
 )
 plot_maps(grid, history)

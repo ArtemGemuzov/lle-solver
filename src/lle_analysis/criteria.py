@@ -6,7 +6,9 @@ DEFAULT_HOMOGENEOUS_CONTRAST = 0.01
 
 
 def is_stationary(
-    evolution: FieldEvolution, *, tolerance: float = DEFAULT_STATIONARY_TOLERANCE,
+    evolution: FieldEvolution,
+    *,
+    tolerance: float = DEFAULT_STATIONARY_TOLERANCE,
 ) -> bool:
     """Проверяет стационарность на переданных снимках комплексного поля (оси: время, пространство).
 
@@ -20,7 +22,9 @@ def is_stationary(
 
 
 def is_homogeneous(
-    intensity: Intensity, *, tolerance: float = DEFAULT_HOMOGENEOUS_CONTRAST,
+    intensity: Intensity,
+    *,
+    tolerance: float = DEFAULT_HOMOGENEOUS_CONTRAST,
 ) -> bool:
     """Проверяет пространственную однородность интенсивности одного снимка.
 

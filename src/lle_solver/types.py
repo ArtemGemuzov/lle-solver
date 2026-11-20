@@ -7,7 +7,7 @@ Time: TypeAlias = float
 State: TypeAlias = np.ndarray
 Spectrum: TypeAlias = np.ndarray
 Wavenumbers: TypeAlias = np.ndarray
-Symbol: TypeAlias = np.ndarray # Значения линейного оператора для всех фурье-мод
+Symbol: TypeAlias = np.ndarray  # Значения линейного оператора для всех фурье-мод
 StepSize: TypeAlias = float
 
 LinearOperator: TypeAlias = Callable[[Wavenumbers], Symbol]

@@ -28,8 +28,11 @@ class ReLoBRaLoTimePDE(dde.data.TimePDE):
 
     def state_dict(self):
         return {
-            "initial": self.initial, "previous": self.previous, "weights": self.weights,
-            "weight_history": self._weight_history, "rng": self.rng.bit_generator.state,
+            "initial": self.initial,
+            "previous": self.previous,
+            "weights": self.weights,
+            "weight_history": self._weight_history,
+            "rng": self.rng.bit_generator.state,
         }
 
     def load_state_dict(self, state):
@@ -85,7 +88,9 @@ class CausalTimePDE(dde.data.TimePDE):
     def __init__(self, *args, causal: CausalConfig, time_end: float, **kwargs):
         super().__init__(*args, **kwargs)
         self.causal = causal
-        self.epsilon = causal.epsilon if causal.schedule is None else causal.schedule.epsilons[0]
+        self.epsilon = (
+            causal.epsilon if causal.schedule is None else causal.schedule.epsilons[0]
+        )
         self.time_end = time_end
         self._weight_history = []
         self.update_pending = False
@@ -103,7 +108,7 @@ class CausalTimePDE(dde.data.TimePDE):
 
     def losses_train(self, targets, outputs, loss_fn, inputs, model, aux=None):
         # DeepXDE добавляет копии точек IC перед точками невязки уравнения.
-        times = inputs[sum(self.num_bcs):, 1]
+        times = inputs[sum(self.num_bcs) :, 1]
         band_count = self.causal.bands
         bands = (times / self.time_end * band_count).long().clamp_max(band_count - 1)
         zeros = times.new_zeros(band_count)
@@ -114,7 +119,12 @@ class CausalTimePDE(dde.data.TimePDE):
             return sums / counts.clamp_min(1)
 
         pde_u, pde_v, ic_u, ic_v = super().losses_train(
-            targets, outputs, [band_mse, band_mse, loss_fn, loss_fn], inputs, model, aux=aux,
+            targets,
+            outputs,
+            [band_mse, band_mse, loss_fn, loss_fn],
+            inputs,
+            model,
+            aux=aux,
         )
         residual_by_band = (pde_u + pde_v).detach()
         previous = torch.cat((zeros[:1], residual_by_band[:-1].cumsum(dim=0)))
@@ -132,7 +142,7 @@ class CausalTimePDE(dde.data.TimePDE):
 
     @property
     def last_min_weight(self) -> float:
-        return self._weight_history[-1][-self.causal.bands:].min().item()
+        return self._weight_history[-1][-self.causal.bands :].min().item()
 
 
 class CausalStage(NamedTuple):
@@ -154,7 +164,10 @@ class CausalSchedule(dde.callbacks.Callback):
         self.first_step = 1
 
     def state_dict(self):
-        return {"first_step": self.first_step, "history": [tuple(s) for s in self.history]}
+        return {
+            "first_step": self.first_step,
+            "history": [tuple(s) for s in self.history],
+        }
 
     def load_state_dict(self, state):
         self.first_step = state["first_step"]
@@ -168,8 +181,12 @@ class CausalSchedule(dde.callbacks.Callback):
             return
 
         stage = CausalStage(
-            len(self.history) + 1, self.model.data.epsilon, self.first_step, step,
-            min_weight, "threshold" if reached_threshold else "step_limit",
+            len(self.history) + 1,
+            self.model.data.epsilon,
+            self.first_step,
+            step,
+            min_weight,
+            "threshold" if reached_threshold else "step_limit",
         )
         self.history.append(stage)
         self.on_stage_end(stage)

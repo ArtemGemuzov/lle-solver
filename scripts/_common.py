@@ -20,22 +20,22 @@ class History:
 
 
 def run(
-        scheme: SplitScheme,
-        grid: PeriodicGrid,
-        state: State,
-        step_size: StepSize,
-        num_steps: int,
-        title: str = "",
-        steps_per_frame: int = 400,
-        save_every: int = 100,
-        live: bool = True,
+    scheme: SplitScheme,
+    grid: PeriodicGrid,
+    state: State,
+    step_size: StepSize,
+    num_steps: int,
+    title: str = "",
+    steps_per_frame: int = 400,
+    save_every: int = 100,
+    live: bool = True,
 ) -> tuple[State, History]:
     times, intensities, spectra, energies = [], [], [], []
 
     if live:
         plt.ion()
         figure, axes = plt.subplots()
-        line, = axes.plot(grid.theta, np.abs(state) ** 2, "b")
+        (line,) = axes.plot(grid.theta, np.abs(state) ** 2, "b")
         axes.set_xlim(-grid.length / 2, grid.length / 2)
         axes.set_xlabel(r"$\theta$")
         axes.set_ylabel(r"$|u|^2$")
@@ -76,7 +76,9 @@ def plot_maps(grid: PeriodicGrid, history: History) -> None:
     figure, axes = plt.subplots(1, 2, figsize=(12, 6), sharey=True)
 
     image = axes[0].imshow(
-        intensity, aspect="auto", origin="lower",
+        intensity,
+        aspect="auto",
+        origin="lower",
         extent=[grid.theta[0], grid.theta[-1], history.times[0], history.times[-1]],
     )
     axes[0].set_xlabel(r"$\theta$")
@@ -84,7 +86,10 @@ def plot_maps(grid: PeriodicGrid, history: History) -> None:
     figure.colorbar(image, ax=axes[0], orientation="horizontal", location="top")
 
     image = axes[1].imshow(
-        spectrum, aspect="auto", origin="lower", norm=LogNorm(vmin=1e-6, vmax=1.0),
+        spectrum,
+        aspect="auto",
+        origin="lower",
+        norm=LogNorm(vmin=1e-6, vmax=1.0),
         extent=[modes[0], modes[-1], history.times[0], history.times[-1]],
     )
     axes[1].set_xlabel(r"$m$")

@@ -83,7 +83,10 @@ def get_run(run_id: str) -> Run:
 
 @contextmanager
 def create_run(
-    config: BaseModel, *, script: str | Path, extra_metadata: Mapping[str, object] | None = None,
+    config: BaseModel,
+    *,
+    script: str | Path,
+    extra_metadata: Mapping[str, object] | None = None,
 ) -> Generator[Run]:
     started = _now()
     metadata = {
@@ -116,12 +119,16 @@ def lock_run(run: Run) -> Generator[None]:
         handle.seek(0)
         if os.name == "nt":
             import msvcrt
+
             try:
                 msvcrt.locking(handle.fileno(), msvcrt.LK_NBLCK, 1)
             except OSError as error:
-                raise RuntimeError(f"Could not acquire the lock for run {run.id}") from error
+                raise RuntimeError(
+                    f"Could not acquire the lock for run {run.id}"
+                ) from error
         else:
             import fcntl
+
             try:
                 fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
             except BlockingIOError as error:
@@ -146,8 +153,13 @@ def _execute_run(run: Run, metadata: dict) -> Generator[None]:
     finally:
         metadata["finished_utc"] = _now().isoformat()
         current = run.load_metadata() if run.exists() else {}
-        current.update({key: metadata[key] for key in ("status", "finished_utc", "error")
-                        if key in metadata})
+        current.update(
+            {
+                key: metadata[key]
+                for key in ("status", "finished_utc", "error")
+                if key in metadata
+            }
+        )
         run.save_metadata(current)
 
 

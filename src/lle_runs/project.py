@@ -18,7 +18,9 @@ def get_experiments_dir() -> Path:
 def get_experiment_dir(number: int) -> Path:
     if not isinstance(number, int) or isinstance(number, bool) or number < 1:
         raise ValueError("Ожидается положительный номер эксперимента")
-    matches = sorted(p for p in get_experiments_dir().glob(f"{number:02d}_*") if p.is_dir())
+    matches = sorted(
+        p for p in get_experiments_dir().glob(f"{number:02d}_*") if p.is_dir()
+    )
     if not matches:
         raise FileNotFoundError(f"Эксперимент {number:02d} не найден")
     if len(matches) != 1:

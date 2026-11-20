@@ -9,14 +9,16 @@ DEFAULT_PEAK_PROMINENCE = 0.25
 
 
 def peak_indices(
-    intensity: Intensity, *, prominence_ratio: float = DEFAULT_PEAK_PROMINENCE,
+    intensity: Intensity,
+    *,
+    prominence_ratio: float = DEFAULT_PEAK_PROMINENCE,
 ) -> NDArray[np.intp]:
     """Индексы пиков на кольце с выраженностью не ниже prominence_ratio * размах."""
     values = intensity.values
     span = np.ptp(values)
     n = len(values)
     indices, _ = find_peaks(np.tile(values, 3), prominence=prominence_ratio * span)
-    return indices[(indices >= n) & (indices < 2*n)] - n
+    return indices[(indices >= n) & (indices < 2 * n)] - n
 
 
 def peak_position(intensity: Intensity, index: int) -> float:

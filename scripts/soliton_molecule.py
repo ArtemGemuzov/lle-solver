@@ -10,7 +10,7 @@ from lle_solver.steps import FourierStep, IntegratorStep
 detuning = 2.0
 pump_amplitude = 1.37225
 d2 = -0.002
-beta2 = 2.0 * d2          # в нашей форме -i*beta2/2 * u_thetatheta == -i*d2 * u_thetatheta
+beta2 = 2.0 * d2  # в нашей форме -i*beta2/2 * u_thetatheta == -i*d2 * u_thetatheta
 
 num_points = 512
 time_step = 1e-3
@@ -23,13 +23,24 @@ scheme = LieTrotterSplitStep(
     IntegratorStep(equation.nonlinear_term, rk2_step),
 )
 
-gaussian_pulse = (0.5 + np.exp(-(grid.theta / 0.85) ** 2)).astype(np.complex128)
+gaussian_pulse = (0.5 + np.exp(-((grid.theta / 0.85) ** 2))).astype(np.complex128)
 field, history = run(
-    scheme, grid, gaussian_pulse, time_step,
-    round(time_end / time_step), title="soliton molecule,",
+    scheme,
+    grid,
+    gaussian_pulse,
+    time_step,
+    round(time_end / time_step),
+    title="soliton molecule,",
 )
 
-np.savez("soliton_molecule.npz", field=field, times=history.times,
-         detuning=detuning, pump=pump_amplitude, beta2=beta2,
-         num_points=num_points, time_step=time_step)
+np.savez(
+    "soliton_molecule.npz",
+    field=field,
+    times=history.times,
+    detuning=detuning,
+    pump=pump_amplitude,
+    beta2=beta2,
+    num_points=num_points,
+    time_step=time_step,
+)
 plot_maps(grid, history)

@@ -48,7 +48,11 @@ recorder = FrameRecorder(grid, time_step, frame_interval)
 
 
 def run_phase(
-        field: np.ndarray, detuning: float, duration: float, phase: str, elapsed: int,
+    field: np.ndarray,
+    detuning: float,
+    duration: float,
+    phase: str,
+    elapsed: int,
 ) -> tuple[np.ndarray, int]:
     scheme = build_scheme(detuning)
     num_steps = round(duration / time_step)
@@ -65,8 +69,11 @@ elapsed = 0
 
 for index in range(round((detuning_captured - detuning_start) / detuning_step)):
     field, elapsed = run_phase(
-        field, detuning_start + detuning_step * (index + 0.5),
-        detuning_step / scan_rate, "forward", elapsed,
+        field,
+        detuning_start + detuning_step * (index + 0.5),
+        detuning_step / scan_rate,
+        "forward",
+        elapsed,
     )
 field, elapsed = run_phase(field, detuning_captured, capture_hold, "hold", elapsed)
 captured_solitons = count_peaks(field)
@@ -79,8 +86,10 @@ for _ in range(max_backward_steps):
     detuning -= backward_step
     field, elapsed = run_phase(field, detuning, backward_hold, "backward", elapsed)
     num_solitons = count_peaks(field)
-    print(f"  Δ={detuning:5.2f}  N={num_solitons:2d}  "
-          f"<|F|^2>={np.mean(np.abs(field) ** 2):.3f}")
+    print(
+        f"  Δ={detuning:5.2f}  N={num_solitons:2d}  "
+        f"<|F|^2>={np.mean(np.abs(field) ** 2):.3f}"
+    )
 
     if num_solitons == target_solitons:
         field, elapsed = run_phase(field, detuning, confirm_hold, "confirm", elapsed)
@@ -94,37 +103,54 @@ field, elapsed = run_phase(field, detuning, settle_time, "settle", elapsed)
 num_solitons = count_peaks(field)
 
 if achieved:
-    print(f"получено N={target_solitons} при Δ={detuning:.2f}, "
-          f"пиковая мощность {np.abs(field).max() ** 2:.2f}")
+    print(
+        f"получено N={target_solitons} при Δ={detuning:.2f}, "
+        f"пиковая мощность {np.abs(field).max() ** 2:.2f}"
+    )
 elif num_solitons == 0:
-    print("все солитоны потеряны: уменьшите backward_step "
-          "или увеличьте backward_hold")
+    print("все солитоны потеряны: уменьшите backward_step или увеличьте backward_hold")
 elif num_solitons > captured_solitons:
-    print(f"солитонное состояние развалилось при Δ={detuning:.2f}: "
-          f"N={num_solitons} против {captured_solitons} захваченных, "
-          f"фон потерял устойчивость")
+    print(
+        f"солитонное состояние развалилось при Δ={detuning:.2f}: "
+        f"N={num_solitons} против {captured_solitons} захваченных, "
+        f"фон потерял устойчивость"
+    )
 else:
-    print(f"остановка на N={num_solitons} при Δ={detuning:.2f}: "
-          f"не хватило шагов, увеличьте max_backward_steps")
+    print(
+        f"остановка на N={num_solitons} при Δ={detuning:.2f}: "
+        f"не хватило шагов, увеличьте max_backward_steps"
+    )
 
 write_viewer(
-    "soliton_by_backward_scan", recorder,
+    "soliton_by_backward_scan",
+    recorder,
     title="Одиночный солитон обратным сканированием",
     subtitle=f"LLE, Strang split-step Fourier, прямой скан до Δ={detuning_captured}, "
-             f"затем обратный проход шагом {backward_step}",
+    f"затем обратный проход шагом {backward_step}",
     phases={
-        "forward": "прямой скан", "hold": f"выдержка при Δ={detuning_captured}",
-        "backward": "обратный проход", "confirm": "подтверждение",
+        "forward": "прямой скан",
+        "hold": f"выдержка при Δ={detuning_captured}",
+        "backward": "обратный проход",
+        "confirm": "подтверждение",
         "settle": "финальная выдержка",
     },
-    pump_amplitude=pump_amplitude, beta2=beta2, seed=SEED,
-    detuning_start=detuning_start, detuning_captured=detuning_captured,
-    scan_rate=scan_rate, detuning_step=detuning_step,
-    backward_step=backward_step, backward_hold=backward_hold,
-    confirm_hold=confirm_hold, settle_time=settle_time,
-    num_points=num_points, window=window, time_step=time_step,
+    pump_amplitude=pump_amplitude,
+    beta2=beta2,
+    seed=SEED,
+    detuning_start=detuning_start,
+    detuning_captured=detuning_captured,
+    scan_rate=scan_rate,
+    detuning_step=detuning_step,
+    backward_step=backward_step,
+    backward_hold=backward_hold,
+    confirm_hold=confirm_hold,
+    settle_time=settle_time,
+    num_points=num_points,
+    window=window,
+    time_step=time_step,
     noise_amplitude=noise_amplitude,
     captured_solitons=captured_solitons,
-    achieved=achieved, final_detuning=round(detuning, 4),
+    achieved=achieved,
+    final_detuning=round(detuning, 4),
     final_solitons=num_solitons,
 )

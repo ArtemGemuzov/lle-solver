@@ -26,7 +26,9 @@ class Intensity:
     def __post_init__(self) -> None:
         _validate_axis(self.theta)
         if self.values.shape != self.theta.shape or self.values.dtype != np.float64:
-            raise ValueError("Интенсивность должна содержать одно значение float64 на узел сетки")
+            raise ValueError(
+                "Интенсивность должна содержать одно значение float64 на узел сетки"
+            )
         if not np.all(self.values >= 0):
             raise ValueError("Интенсивность должна быть неотрицательной")
 
@@ -41,7 +43,9 @@ class Field:
     def __post_init__(self) -> None:
         _validate_axis(self.theta)
         if self.values.shape != self.theta.shape or self.values.dtype != np.complex128:
-            raise ValueError("Поле должно содержать одно значение complex128 на узел сетки")
+            raise ValueError(
+                "Поле должно содержать одно значение complex128 на узел сетки"
+            )
 
     @property
     def intensity(self) -> Intensity:
@@ -51,13 +55,19 @@ class Field:
         """Возвращает то же поле в координатах с началом в origin."""
         return type(self)(self.theta - origin, self.values)
 
-    def field_at(self, theta: NDArray[np.float64], *, interpolation_order: int = 3) -> Self:
+    def field_at(
+        self, theta: NDArray[np.float64], *, interpolation_order: int = 3
+    ) -> Self:
         """Возвращает поле в точках theta, интерполируя исходную равномерную сетку по кольцу."""
         _validate_axis(theta)
         if self.theta.size == 1:
-            return type(self)(theta, np.full(theta.shape, self.values[0], dtype=np.complex128))
+            return type(self)(
+                theta, np.full(theta.shape, self.values[0], dtype=np.complex128)
+            )
         indices = (theta - self.theta[0]) / uniform_spacing(self.theta)
-        values = map_coordinates(self.values, indices[None, :], order=interpolation_order, mode="grid-wrap")
+        values = map_coordinates(
+            self.values, indices[None, :], order=interpolation_order, mode="grid-wrap"
+        )
         return type(self)(theta, values)
 
 
@@ -68,7 +78,11 @@ TimeIndex = int | np.integer
 def _check_selection(key: TimeSelection, times: NDArray[np.float64]) -> None:
     if isinstance(key, slice):
         return
-    if not isinstance(key, np.ndarray) or key.dtype != np.bool_ or key.shape != times.shape:
+    if (
+        not isinstance(key, np.ndarray)
+        or key.dtype != np.bool_
+        or key.shape != times.shape
+    ):
         raise IndexError("Ожидается срез или логическая маска по оси времени")
 
 
@@ -83,8 +97,13 @@ class IntensityEvolution:
     def __post_init__(self) -> None:
         _validate_axis(self.theta)
         _validate_axis(self.times)
-        if self.values.shape != (self.times.size, self.theta.size) or self.values.dtype != np.float64:
-            raise ValueError("Ожидается матрица интенсивности float64 по времени и пространству")
+        if (
+            self.values.shape != (self.times.size, self.theta.size)
+            or self.values.dtype != np.float64
+        ):
+            raise ValueError(
+                "Ожидается матрица интенсивности float64 по времени и пространству"
+            )
         if not np.all(self.values >= 0):
             raise ValueError("Интенсивность должна быть неотрицательной")
 
@@ -124,7 +143,9 @@ class FieldEvolution:
         if self.values.dtype != np.complex128:
             raise ValueError("Поле должно иметь тип complex128")
         if self.values.shape != (self.times.size, self.theta.size):
-            raise ValueError("Форма поля должна совпадать с размерами осей времени и пространства")
+            raise ValueError(
+                "Форма поля должна совпадать с размерами осей времени и пространства"
+            )
 
     @overload
     def __getitem__(self, key: TimeIndex) -> Field: ...
@@ -149,7 +170,9 @@ class FieldEvolution:
             raise ValueError(f"Ожидался один снимок, получено {self.times.size}")
         return self[0]
 
-    def at_time(self, time: float, *, tolerance: float = DEFAULT_TIME_TOLERANCE) -> Field:
+    def at_time(
+        self, time: float, *, tolerance: float = DEFAULT_TIME_TOLERANCE
+    ) -> Field:
         """Возвращает ближайший сохранённый снимок в пределах абсолютного допуска по времени."""
         index = int(np.argmin(np.abs(self.times - time)))
         if not np.isclose(self.times[index], time, rtol=0, atol=tolerance):

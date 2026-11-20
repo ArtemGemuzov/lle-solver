@@ -69,15 +69,23 @@ variation = (peak_power.max() - peak_power.min()) / peak_power.mean()
 print(f"разброс пиковой мощности при Δ={detuning_end}: {variation * 100:.2f}%")
 
 write_viewer(
-    "multisoliton_by_forward_scan", recorder,
+    "multisoliton_by_forward_scan",
+    recorder,
     title="Захват солитонов сканированием расстройки",
     subtitle=f"LLE, Strang split-step Fourier, Δ: {detuning_start} -> {detuning_end} "
-             f"со скоростью {scan_rate}",
+    f"со скоростью {scan_rate}",
     phases={"forward": "скан расстройки", "check": f"выдержка при Δ={detuning_end}"},
-    pump_amplitude=pump_amplitude, beta2=beta2, seed=SEED,
-    detuning_start=detuning_start, detuning_end=detuning_end,
-    scan_rate=scan_rate, detuning_step=detuning_step,
-    num_points=num_points, window=window, time_step=time_step,
-    noise_amplitude=noise_amplitude, check_time=check_time,
+    pump_amplitude=pump_amplitude,
+    beta2=beta2,
+    seed=SEED,
+    detuning_start=detuning_start,
+    detuning_end=detuning_end,
+    scan_rate=scan_rate,
+    detuning_step=detuning_step,
+    num_points=num_points,
+    window=window,
+    time_step=time_step,
+    noise_amplitude=noise_amplitude,
+    check_time=check_time,
     peak_power_variation=round(float(variation), 5),
 )

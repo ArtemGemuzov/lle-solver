@@ -32,8 +32,7 @@ def simulate(p: GaussianConfig) -> FieldEvolution:
     )
 
     field = (
-        p.initial.amplitude
-        * np.exp(-grid.theta**2 / (2 * p.initial.width**2))
+        p.initial.amplitude * np.exp(-(grid.theta**2) / (2 * p.initial.width**2))
     ).astype(np.complex128)
 
     steps = np.arange(0, total + 1, record_step)

@@ -12,15 +12,28 @@ from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
 
 FORMAT_VERSION = 1
 DATA_FIELDS = (
-    "train_x_all", "train_x_bc", "num_bcs", "train_x", "train_y",
-    "test_x", "test_y", "train_aux_vars", "test_aux_vars",
+    "train_x_all",
+    "train_x_bc",
+    "num_bcs",
+    "train_x",
+    "train_y",
+    "test_x",
+    "test_y",
+    "train_aux_vars",
+    "test_aux_vars",
 )
 
 
 def _pack(value):
     if isinstance(value, np.ndarray):
-        return {"__ndarray__": True, "dtype": value.dtype.str, "shape": value.shape,
-                "bytes": torch.from_numpy(np.frombuffer(value.tobytes(), dtype=np.uint8).copy())}
+        return {
+            "__ndarray__": True,
+            "dtype": value.dtype.str,
+            "shape": value.shape,
+            "bytes": torch.from_numpy(
+                np.frombuffer(value.tobytes(), dtype=np.uint8).copy()
+            ),
+        }
     if isinstance(value, np.generic):
         return value.item()
     if isinstance(value, torch.Tensor):
@@ -38,7 +51,9 @@ def _unpack(value, device="cpu"):
     if isinstance(value, dict):
         if value.get("__ndarray__") is True:
             raw = value["bytes"].numpy().tobytes()
-            return np.frombuffer(raw, dtype=value["dtype"]).copy().reshape(value["shape"])
+            return (
+                np.frombuffer(raw, dtype=value["dtype"]).copy().reshape(value["shape"])
+            )
         return {key: _unpack(item, device) for key, item in value.items()}
     if isinstance(value, torch.Tensor):
         return value.to(device)
@@ -65,7 +80,9 @@ def extend_checkpoint(checkpoint: dict, extra_steps: int) -> dict:
     if config.loss.causal is not None and config.loss.causal.schedule is not None:
         raise ValueError("Cannot extend training with loss.causal.schedule enabled")
     parameters = config.model_dump(mode="json")
-    parameters["training"]["iterations"] = checkpoint["train_state"]["step"] + extra_steps
+    parameters["training"]["iterations"] = (
+        checkpoint["train_state"]["step"] + extra_steps
+    )
     return {**checkpoint, "config": parameters}
 
 
@@ -76,7 +93,9 @@ def initial_weights(checkpoint: dict, target: PinnGaussianConfig) -> dict:
     if source.network != target.network:
         raise ValueError("Weight transfer requires matching network configurations")
     if source.domain.length != target.domain.length:
-        raise ValueError("Weight transfer requires matching domain.length for the spatial harmonics")
+        raise ValueError(
+            "Weight transfer requires matching domain.length for the spatial harmonics"
+        )
 
     weights = checkpoint["model"].copy()
     ratio = target.domain.time_end / source.domain.time_end
@@ -87,12 +106,16 @@ def initial_weights(checkpoint: dict, target: PinnGaussianConfig) -> dict:
         adjusted = weight.clone()
         adjusted[:, 0] = ratio * time_column
         weights["linears.0.weight"] = adjusted
-        weights["linears.0.bias"] = weights["linears.0.bias"] + (ratio - 1) * time_column
+        weights["linears.0.bias"] = (
+            weights["linears.0.bias"] + (ratio - 1) * time_column
+        )
     return weights
 
 
 class PinnCheckpoint(dde.callbacks.Callback):
-    def __init__(self, path: Path, config: PinnGaussianConfig, resampler, schedule=None):
+    def __init__(
+        self, path: Path, config: PinnGaussianConfig, resampler, schedule=None
+    ):
         super().__init__()
         self.path = path
         self.config = config
@@ -105,14 +128,17 @@ class PinnCheckpoint(dde.callbacks.Callback):
 
     @property
     def complete(self):
-        return (self.model.train_state.step >= self.config.training.iterations
-                or (self.schedule is not None
-                    and len(self.schedule.history) == len(self.schedule.config.epsilons)))
+        return self.model.train_state.step >= self.config.training.iterations or (
+            self.schedule is not None
+            and len(self.schedule.history) == len(self.schedule.config.epsilons)
+        )
 
     def save(self):
         model = self.model
         if not all(torch.isfinite(p).all().item() for p in model.net.parameters()):
-            raise FloatingPointError("Non-finite PINN weights detected. The previous checkpoint was preserved")
+            raise FloatingPointError(
+                "Non-finite PINN weights detected. The previous checkpoint was preserved"
+            )
         checkpoint = {
             "format_version": FORMAT_VERSION,
             "config": self.config.model_dump(mode="json"),
@@ -123,12 +149,21 @@ class PinnCheckpoint(dde.callbacks.Callback):
             "history": vars(model.losshistory),
             "loss_weights": model.loss_weights,
             "data": {key: getattr(model.data, key) for key in DATA_FIELDS},
-            "weighting": model.data.state_dict() if hasattr(model.data, "state_dict") else None,
-            "schedule": self.schedule.state_dict() if self.schedule is not None else None,
+            "weighting": model.data.state_dict()
+            if hasattr(model.data, "state_dict")
+            else None,
+            "schedule": self.schedule.state_dict()
+            if self.schedule is not None
+            else None,
             "resample_counter": self.resampler.epochs_since_last_resample,
-            "rng": {"python": random.getstate(), "numpy": np.random.get_state(),
-                    "torch": torch.get_rng_state(),
-                    "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else []},
+            "rng": {
+                "python": random.getstate(),
+                "numpy": np.random.get_state(),
+                "torch": torch.get_rng_state(),
+                "cuda": torch.cuda.get_rng_state_all()
+                if torch.cuda.is_available()
+                else [],
+            },
         }
         temporary = self.path.with_suffix(".tmp")
         try:
@@ -166,8 +201,11 @@ class PinnCheckpoint(dde.callbacks.Callback):
         torch.set_rng_state(rng["torch"])
         if rng["cuda"] and torch.cuda.is_available():
             torch.cuda.set_rng_state_all(rng["cuda"])
-        self._best_state = {key: value for key, value in vars(model.train_state).items()
-                            if key.startswith("best_")}
+        self._best_state = {
+            key: value
+            for key, value in vars(model.train_state).items()
+            if key.startswith("best_")
+        }
         self._restored = True
 
     def on_train_begin(self):
@@ -181,8 +219,11 @@ class PinnCheckpoint(dde.callbacks.Callback):
 
     def on_epoch_end(self):
         stages = len(self.schedule.history) if self.schedule is not None else 0
-        if (self.model.train_state.step % self.config.checkpoint.every_steps == 0
-                or stages != self._stage_count or self.complete):
+        if (
+            self.model.train_state.step % self.config.checkpoint.every_steps == 0
+            or stages != self._stage_count
+            or self.complete
+        ):
             self.save()
         self._stage_count = stages
 

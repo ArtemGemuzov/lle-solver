@@ -7,18 +7,22 @@ from numpy.typing import NDArray
 def uniform_spacing(theta: NDArray[np.float64]) -> float:
     """Возвращает шаг равномерной координатной сетки."""
     steps = np.diff(theta)
-    if (steps.size == 0 or not np.isfinite(steps[0]) or steps[0] == 0
-            or not np.allclose(steps, steps[0], rtol=1e-10, atol=0)):
+    if (
+        steps.size == 0
+        or not np.isfinite(steps[0])
+        or steps[0] == 0
+        or not np.allclose(steps, steps[0], rtol=1e-10, atol=0)
+    ):
         raise ValueError("Ожидается равномерная сетка с ненулевым шагом")
     return float(steps[0])
 
 
 class PeriodicGrid:
-    def __init__(self, num_points: int, length: float = 2*np.pi) -> None:
+    def __init__(self, num_points: int, length: float = 2 * np.pi) -> None:
         self.num_points = num_points
         self.length = length
         self.spacing = length / num_points
-        
+
         self.theta = np.linspace(-length / 2, length / 2, num_points, endpoint=False)
         self.wavenumbers = (
             2 * np.pi / length * np.fft.fftfreq(num_points, d=1.0 / num_points)
@@ -33,7 +37,9 @@ class PeriodicGrid:
         """
         theta = np.asarray(theta, dtype=np.float64)
         if theta.ndim != 1 or not np.isfinite(theta).all():
-            raise ValueError("Координаты должны быть одномерным массивом конечных чисел")
+            raise ValueError(
+                "Координаты должны быть одномерным массивом конечных чисел"
+            )
         spacing = uniform_spacing(theta)
         if spacing <= 0:
             raise ValueError("Координаты должны строго возрастать")

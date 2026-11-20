@@ -47,7 +47,9 @@ def build_model(config: PinnGaussianConfig):
 
     def initial_real(points):
         theta = points[:, :1]
-        return config.initial.amplitude * np.exp(-0.5 * (theta / config.initial.width) ** 2)
+        return config.initial.amplitude * np.exp(
+            -0.5 * (theta / config.initial.width) ** 2
+        )
 
     def initial_imag(points):
         return np.zeros_like(points[:, :1])
@@ -69,13 +71,21 @@ def build_model(config: PinnGaussianConfig):
     causal = config.loss.causal
     if balancing is not None:
         data = ReLoBRaLoTimePDE(
-            geometry, residual, initial_conditions, **data_options,
-            balancing=balancing, seed=training.seed,
+            geometry,
+            residual,
+            initial_conditions,
+            **data_options,
+            balancing=balancing,
+            seed=training.seed,
         )
     elif causal is not None:
         data = CausalTimePDE(
-            geometry, residual, initial_conditions, **data_options,
-            causal=causal, time_end=domain.time_end,
+            geometry,
+            residual,
+            initial_conditions,
+            **data_options,
+            causal=causal,
+            time_end=domain.time_end,
         )
     else:
         data = dde.data.TimePDE(geometry, residual, initial_conditions, **data_options)
@@ -95,7 +105,8 @@ def build_model(config: PinnGaussianConfig):
     model = dde.Model(data, net)
     initial_weight = training.initial_weight if balancing is None else 1.0
     model.compile(
-        "adam", lr=training.learning_rate,
+        "adam",
+        lr=training.learning_rate,
         loss_weights=[1.0, 1.0, initial_weight, initial_weight],
     )
     if balancing is not None or causal is not None:
@@ -149,19 +160,29 @@ class PinnTraining:
         causal = config.loss.causal
         schedule = None
         if causal is not None and causal.schedule is not None:
+
             def save_stage(stage: CausalStage) -> None:
                 stage_dir = run.path / f"stage_{stage.number:02d}"
                 stage_dir.mkdir()
                 save_evolution(stage_dir, predict_evolution(model, config))
-                reason = "достигнут порог" if stage.reason == "threshold" else "исчерпан лимит шагов"
-                print(f"Стадия {stage.number}: ε={stage.epsilon:g}, шаг={stage.last_step}, "
-                      f"минимальный вес={stage.min_weight:.6f}, {reason}", flush=True)
+                reason = (
+                    "достигнут порог"
+                    if stage.reason == "threshold"
+                    else "исчерпан лимит шагов"
+                )
+                print(
+                    f"Стадия {stage.number}: ε={stage.epsilon:g}, шаг={stage.last_step}, "
+                    f"минимальный вес={stage.min_weight:.6f}, {reason}",
+                    flush=True,
+                )
 
             stage_limit = training.iterations // len(causal.schedule.epsilons)
             schedule = CausalSchedule(causal.schedule, stage_limit, save_stage)
             callbacks.append(schedule)
 
-        checkpoint = PinnCheckpoint(run.path / "checkpoint.pt", config, resampler, schedule)
+        checkpoint = PinnCheckpoint(
+            run.path / "checkpoint.pt", config, resampler, schedule
+        )
         checkpoint.set_model(model)
         self.checkpoint = checkpoint
         self.callbacks = [*callbacks, checkpoint]
@@ -172,9 +193,12 @@ class PinnTraining:
         checkpoint = self.checkpoint
         training = self.config.training
         schedule = checkpoint.schedule
-        remaining = 0 if checkpoint.complete else training.iterations - model.train_state.step
+        remaining = (
+            0 if checkpoint.complete else training.iterations - model.train_state.step
+        )
         history, state = model.train(
-            iterations=remaining, display_every=training.log_every,
+            iterations=remaining,
+            display_every=training.log_every,
             callbacks=self.callbacks,
         )
         if schedule is not None and history.steps[-1] != state.step:
@@ -190,15 +214,22 @@ class PinnTraining:
         causal = config.loss.causal
         losses = np.column_stack((history.steps, history.loss_train, history.loss_test))
         np.savetxt(
-            run.path / "losses.csv", losses, delimiter=",", comments="",
-            header=("step,train_pde_u,train_pde_v,train_ic_u,train_ic_v,"
-                    "test_pde_u,test_pde_v,test_ic_u,test_ic_v"),
+            run.path / "losses.csv",
+            losses,
+            delimiter=",",
+            comments="",
+            header=(
+                "step,train_pde_u,train_pde_v,train_ic_u,train_ic_v,"
+                "test_pde_u,test_pde_v,test_ic_u,test_ic_v"
+            ),
             fmt=["%d"] + ["%.9e"] * 8,
         )
         if not np.isfinite(losses).all():
             raise FloatingPointError("Non-finite PINN loss detected")
         if schedule is not None:
-            with (run.path / "causal_stages.csv").open("x", encoding="utf-8", newline="") as target:
+            with (run.path / "causal_stages.csv").open(
+                "x", encoding="utf-8", newline=""
+            ) as target:
                 writer = csv.writer(target)
                 writer.writerow(CausalStage._fields)
                 writer.writerows(schedule.history)
@@ -207,13 +238,16 @@ class PinnTraining:
                 columns = ["raw_pde", "raw_ic", "weight_pde", "weight_ic"]
             else:
                 bands = range(1, causal.bands + 1)
-                columns = [f"raw_band_{i}" for i in bands] + [f"weight_band_{i}" for i in bands]
+                columns = [f"raw_band_{i}" for i in bands] + [
+                    f"weight_band_{i}" for i in bands
+                ]
             weight_history = torch.stack(model.data.weight_history).cpu().numpy()
             steps = np.arange(1, len(weight_history) + 1)
             np.savetxt(
                 run.path / "loss_weights.csv",
                 np.column_stack((steps, weight_history)),
-                delimiter=",", comments="",
+                delimiter=",",
+                comments="",
                 header=",".join(["step", *columns]),
                 fmt=["%d"] + ["%.9e"] * len(columns),
             )

@@ -28,17 +28,30 @@ scheme = LieTrotterSplitStep(
 init_intensity = 1.0
 noise_level = 0.02
 rng = np.random.RandomState(SEED)
-field = np.sqrt(init_intensity) * np.ones(num_points) + noise_level * rng.randn(num_points)
+field = np.sqrt(init_intensity) * np.ones(num_points) + noise_level * rng.randn(
+    num_points
+)
 field = field.astype(np.complex128)
 
 field, history = run(
-    scheme, grid, field, time_step,
-    round(time_end / time_step), title="turing,",
+    scheme,
+    grid,
+    field,
+    time_step,
+    round(time_end / time_step),
+    title="turing,",
 )
 
 np.savez(
-    "turing.npz", field=field, times=history.times, energy=history.energy,
-    detuning=detuning, pump_amplitude=pump_amplitude, beta2=beta2,
-    num_points=num_points, time_step=time_step, seed=SEED,
+    "turing.npz",
+    field=field,
+    times=history.times,
+    energy=history.energy,
+    detuning=detuning,
+    pump_amplitude=pump_amplitude,
+    beta2=beta2,
+    num_points=num_points,
+    time_step=time_step,
+    seed=SEED,
 )
 plot_maps(grid, history)

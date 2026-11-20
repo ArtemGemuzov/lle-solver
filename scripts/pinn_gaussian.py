@@ -26,7 +26,9 @@ from lle_solver.simulations.pinn_gaussian import PinnGaussianConfig
 
 
 def main(argv=None):
-    parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    parser = argparse.ArgumentParser(
+        description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter
+    )
     commands = parser.add_subparsers(dest="command", required=True)
     train = commands.add_parser("train", help="Обучить модель с нуля")
     resume = commands.add_parser("resume", help="Возобновить прерванный запуск")
@@ -38,7 +40,9 @@ def main(argv=None):
     for sub in (train, transfer):
         sub.add_argument("--config", type=Path, help="Базовый конфиг YAML")
         sub.add_argument("overrides", nargs="*", metavar="key=value")
-    extend.add_argument("--steps", required=True, type=int, help="Число дополнительных шагов Adam")
+    extend.add_argument(
+        "--steps", required=True, type=int, help="Число дополнительных шагов Adam"
+    )
 
     argv = sys.argv[1:] if argv is None else argv
     if argv and argv[0] in commands.choices:

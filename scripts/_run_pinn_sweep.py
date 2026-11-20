@@ -27,7 +27,11 @@ class Experiment:
 
     def command(self) -> list[str]:
         return [
-            sys.executable, str(TRAINER), "train", "--config", str(CONFIG),
+            sys.executable,
+            str(TRAINER),
+            "train",
+            "--config",
+            str(CONFIG),
             f"domain.time_end={self.time_end}",
             f"domain.interior_points={self.points}",
             f"training.iterations={self.iterations}",
@@ -66,7 +70,9 @@ def run_experiments(experiments: tuple[Experiment, ...]) -> int:
             if pending and len(active) < MAX_PROCESSES and monotonic() >= next_start:
                 experiment = pending.popleft()
                 process = subprocess.Popen(
-                    experiment.command(), cwd=PROJECT_ROOT, env=env,
+                    experiment.command(),
+                    cwd=PROJECT_ROOT,
+                    env=env,
                     stdin=subprocess.DEVNULL,
                 )
                 active[process] = experiment.name

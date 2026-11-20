@@ -15,8 +15,13 @@ from lle_solver.simulations.pinn_training import PinnTraining
 
 def clear_resumed_outputs(path: Path, completed_stages: int) -> None:
     """Удаляет результаты, которые предстоит пересчитать после возобновления."""
-    for name in ("losses.csv", "loss_weights.csv", "causal_stages.csv",
-                 "model.pt", "field_evolution.npz"):
+    for name in (
+        "losses.csv",
+        "loss_weights.csv",
+        "causal_stages.csv",
+        "model.pt",
+        "field_evolution.npz",
+    ):
         (path / name).unlink(missing_ok=True)
     for stage in path.glob("stage_*"):
         suffix = stage.name.removeprefix("stage_")
@@ -34,7 +39,9 @@ def resume(script, source: Run):
         saved = load_checkpoint(run.path / "checkpoint.pt")
         config = PinnGaussianConfig.model_validate(saved["config"])
         if config != run.load_config(PinnGaussianConfig):
-            raise ValueError("Checkpoint configuration differs from the run configuration")
+            raise ValueError(
+                "Checkpoint configuration differs from the run configuration"
+            )
         training = PinnTraining(run, config)
         training.checkpoint.restore(saved)
         schedule = training.checkpoint.schedule
@@ -46,8 +53,11 @@ def extend(script, source: Run, steps: int):
     parent = load_checkpoint(source.path / "checkpoint.pt")
     saved = extend_checkpoint(parent, steps)
     config = PinnGaussianConfig.model_validate(saved["config"])
-    metadata = {"parent_run_id": source.id, "parent_step": saved["train_state"]["step"],
-                "parent_mode": "extend"}
+    metadata = {
+        "parent_run_id": source.id,
+        "parent_step": saved["train_state"]["step"],
+        "parent_mode": "extend",
+    }
     with create_run(config, script=script, extra_metadata=metadata) as run:
         training = PinnTraining(run, config)
         training.checkpoint.restore(saved)
@@ -58,8 +68,11 @@ def extend(script, source: Run, steps: int):
 def transfer(script, source: Run, config: PinnGaussianConfig):
     parent = load_checkpoint(source.path / "checkpoint.pt")
     weights = initial_weights(parent, config)
-    metadata = {"parent_run_id": source.id, "parent_step": parent["train_state"]["step"],
-                "parent_mode": "init"}
+    metadata = {
+        "parent_run_id": source.id,
+        "parent_step": parent["train_state"]["step"],
+        "parent_mode": "init",
+    }
     del parent
     with create_run(config, script=script, extra_metadata=metadata) as run:
         training = PinnTraining(run, config)

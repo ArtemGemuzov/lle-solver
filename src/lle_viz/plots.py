@@ -20,19 +20,29 @@ def cell_edges(values: ArrayLike, *, logarithmic: bool = False) -> NDArray[np.fl
         raise ValueError("Логарифмические узлы должны быть положительными")
     coordinates = np.log(values) if logarithmic else values
     midpoints = (coordinates[:-1] + coordinates[1:]) / 2
-    edges = np.r_[2 * coordinates[0] - midpoints[0], midpoints,
-                  2 * coordinates[-1] - midpoints[-1]]
+    edges = np.r_[
+        2 * coordinates[0] - midpoints[0],
+        midpoints,
+        2 * coordinates[-1] - midpoints[-1],
+    ]
     return np.exp(edges) if logarithmic else edges
 
 
 def plot_outcome_map(
-    ax: Axes, widths: ArrayLike, amplitudes: ArrayLike, matrix: ArrayLike, colors: Sequence[str],
+    ax: Axes,
+    widths: ArrayLike,
+    amplitudes: ArrayLike,
+    matrix: ArrayLike,
+    colors: Sequence[str],
 ) -> tuple[QuadMesh, PathCollection]:
     x_edges = cell_edges(widths, logarithmic=True)
     y_edges = cell_edges(amplitudes)
     image = ax.pcolormesh(
-        x_edges, y_edges, matrix, cmap=ListedColormap(colors),
-        norm=BoundaryNorm(np.arange(len(colors)+1)-.5, len(colors)),
+        x_edges,
+        y_edges,
+        matrix,
+        cmap=ListedColormap(colors),
+        norm=BoundaryNorm(np.arange(len(colors) + 1) - 0.5, len(colors)),
     )
     x, y = np.meshgrid(widths, amplitudes)
     nodes = ax.scatter(x.ravel(), y.ravel())
@@ -40,14 +50,24 @@ def plot_outcome_map(
 
 
 def plot_intensity(ax: Axes, intensity: IntensityEvolution) -> QuadMesh:
-    return ax.pcolormesh(intensity.theta, intensity.times, intensity.values, shading="nearest", rasterized=True)
+    return ax.pcolormesh(
+        intensity.theta,
+        intensity.times,
+        intensity.values,
+        shading="nearest",
+        rasterized=True,
+    )
 
 
 def plot_profiles(ax: Axes, profiles: Sequence[Intensity]) -> list[Line2D]:
-    return [line for profile in profiles for line in ax.plot(profile.theta, profile.values)]
+    return [
+        line for profile in profiles for line in ax.plot(profile.theta, profile.values)
+    ]
 
 
-def plot_stacked_counts(ax: Axes, coordinates: ArrayLike, counts: ArrayLike) -> list[BarContainer]:
+def plot_stacked_counts(
+    ax: Axes, coordinates: ArrayLike, counts: ArrayLike
+) -> list[BarContainer]:
     bottom = np.zeros(len(np.asarray(coordinates)))
     bars = []
     for values in np.asarray(counts):

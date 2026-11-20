@@ -41,7 +41,8 @@ class ReLoBRaLoConfig(Config):
 
 class CausalScheduleConfig(Config):
     epsilons: list[Annotated[float, Field(gt=0)]] = Field(
-        default_factory=lambda: [0.01, 0.1, 1.0, 10.0, 100.0], min_length=2,
+        default_factory=lambda: [0.01, 0.1, 1.0, 10.0, 100.0],
+        min_length=2,
     )
     threshold: float = Field(default=0.99, gt=0, lt=1)
 
@@ -86,7 +87,9 @@ class PinnGaussianConfig(Config):
         time_end = self.domain.time_end
         interval = self.recording.interval
         count = round(time_end / interval)
-        if count < 1 or not isclose(time_end, count * interval, rel_tol=0, abs_tol=1e-12):
+        if count < 1 or not isclose(
+            time_end, count * interval, rel_tol=0, abs_tol=1e-12
+        ):
             raise ValueError("End time must be a multiple of the recording interval")
         return self
 
@@ -95,5 +98,7 @@ class PinnGaussianConfig(Config):
         causal = self.loss.causal
         if causal is not None and causal.schedule is not None:
             if self.training.iterations < len(causal.schedule.epsilons):
-                raise ValueError("Each causal weighting stage requires at least one Adam step")
+                raise ValueError(
+                    "Each causal weighting stage requires at least one Adam step"
+                )
         return self

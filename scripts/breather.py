@@ -42,16 +42,22 @@ for step, _, field in evolve(scheme, initial_field, num_steps, time_step):
     peak_power[step] = np.abs(field).max() ** 2
     recorder.record(field, step, detuning, "evolution")
 
-maxima, _ = find_peaks(peak_power[round(transient_time / time_step):])
+maxima, _ = find_peaks(peak_power[round(transient_time / time_step) :])
 period = np.mean(np.diff(maxima)) * time_step if maxima.size > 2 else np.nan
 print(f"период дыхания: {period:.3f}")
 
 write_viewer(
-    "breather", recorder,
+    "breather",
+    recorder,
     title="Дышащий диссипативный солитон",
     subtitle=f"LLE, Strang split-step Fourier, фиксированная Δ={detuning}",
     phases={"evolution": f"эволюция при Δ={detuning}"},
-    pump_amplitude=pump_amplitude, detuning=detuning, beta2=beta2,
-    num_points=num_points, window=window, time_step=time_step, time_end=time_end,
+    pump_amplitude=pump_amplitude,
+    detuning=detuning,
+    beta2=beta2,
+    num_points=num_points,
+    window=window,
+    time_step=time_step,
+    time_end=time_end,
     breathing_period=round(float(period), 4),
 )

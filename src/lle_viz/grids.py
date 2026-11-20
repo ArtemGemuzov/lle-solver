@@ -3,7 +3,9 @@ from numpy.typing import ArrayLike, NDArray
 
 
 def rectangular_grid(
-    x: ArrayLike, y: ArrayLike, values: ArrayLike,
+    x: ArrayLike,
+    y: ArrayLike,
+    values: ArrayLike,
 ) -> tuple[NDArray[np.float64], NDArray[np.float64], NDArray[np.float64]]:
     """Упорядоченные оси и матрица значений в узлах прямоугольной сетки."""
     x, y, values = (np.asarray(a, dtype=float) for a in (x, y, values))
