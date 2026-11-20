@@ -164,16 +164,13 @@ def _execute_run(run: Run, metadata: dict) -> Generator[None]:
 
 
 @contextmanager
-def resume_run(path: Path, *, script: str | Path) -> Generator[Run]:
+def resume_run(path: Path) -> Generator[Run]:
     """Возобновляет незавершённый запуск под той же блокировкой, что и create_run."""
     run = Run(path.resolve())
     if not run.exists():
         raise FileNotFoundError(f"Run metadata not found: {run.path}")
     with lock_run(run):
         metadata = run.load_metadata()
-        expected_script = Path(script).resolve().relative_to(PROJECT_ROOT).as_posix()
-        if metadata.get("script") != expected_script:
-            raise ValueError("Run belongs to a different script")
         if metadata.get("status") == "running":
             metadata["status"] = "incomplete"
             run.save_metadata(metadata)

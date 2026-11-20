@@ -77,10 +77,10 @@ def train(config: PinnGaussianConfig, *, script=DEFAULT_SCRIPT) -> Run:
     return run
 
 
-def resume(source: Run | str, *, script=DEFAULT_SCRIPT) -> Run:
+def resume(source: Run | str) -> Run:
     """Продолжает незавершённый Run с последнего чекпоинта."""
     source = _source(source)
-    with resume_run(source.path, script=script) as run:
+    with resume_run(source.path) as run:
         saved = load_checkpoint(run.path / "checkpoint.pt")
         config = PinnGaussianConfig.model_validate(saved["config"])
         if config != run.load_config(PinnGaussianConfig):
