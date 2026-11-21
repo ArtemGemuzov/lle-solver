@@ -39,6 +39,52 @@ include = ["src"]
 pythonVersion = "3.11"
 typeCheckingMode = "standard"
 
+[tool.importlinter]
+root_package = "lle"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Physics is shared by computation, field tools and workflows"
+type = "protected"
+protected_modules = ["lle.physics"]
+allowed_importers = [
+    "lle.analysis",
+    "lle.numerics",
+    "lle.pinn",
+    "lle.storage",
+    "lle.viz",
+    "lle.workflows",
+]
+
+[[tool.importlinter.contracts]]
+name = "Only run infrastructure and workflows import configuration"
+type = "protected"
+protected_modules = ["lle.config"]
+allowed_importers = ["lle.runs", "lle.workflows"]
+
+[[tool.importlinter.contracts]]
+name = "Only workflows import computation and storage packages"
+type = "protected"
+protected_modules = ["lle.numerics", "lle.pinn", "lle.runs", "lle.storage"]
+allowed_importers = ["lle.workflows"]
+
+[[tool.importlinter.contracts]]
+name = "Analysis, visualization and workflows are entry points"
+type = "protected"
+protected_modules = ["lle.analysis", "lle.viz", "lle.workflows"]
+allowed_importers = []
+
+[[tool.importlinter.contracts]]
+name = "SSFM and PINN workflows are independent"
+type = "independence"
+modules = ["lle.workflows.ssfm_gaussian", "lle.workflows.pinn_gaussian"]
+
+[[tool.importlinter.contracts]]
+name = "Physics, numerics and SSFM are independent of PINN libraries"
+type = "forbidden"
+source_modules = ["lle.physics", "lle.numerics", "lle.workflows.ssfm_gaussian"]
+forbidden_modules = ["deepxde", "torch"]
+
 [tool.uv]
 conflicts = [
     [{ extra = "pinn" }, { extra = "pinn-cuda" }],
