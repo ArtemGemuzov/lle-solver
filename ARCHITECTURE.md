@@ -104,7 +104,8 @@ pinn_field = load_evolution(run.path)
 Начальное комплексное поле вычисляется общим объектом `GaussianPulse`.
 
 `Field`, `FieldEvolution`, `Intensity` и `IntensityEvolution` находятся в
-`lle.physics.fields`; общие операции с координатами — в `physics.geometry`.
+`lle.physics.fields`; SSFM и PINN строят периодические координаты через
+`physics.geometry.periodic_coordinates`.
 Расчётная сетка с фурье-модами остаётся в `numerics.grid`.
 
 `build_network(input_size=..., hidden_layers=..., hidden_width=...)` создаёт FNN

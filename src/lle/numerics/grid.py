@@ -3,7 +3,7 @@ from typing import Self
 import numpy as np
 from numpy.typing import NDArray
 
-from lle.physics.geometry import uniform_spacing
+from lle.physics.geometry import periodic_coordinates, uniform_spacing
 
 
 class PeriodicGrid:
@@ -12,7 +12,7 @@ class PeriodicGrid:
         self.length = length
         self.spacing = length / num_points
 
-        self.theta = np.linspace(-length / 2, length / 2, num_points, endpoint=False)
+        self.theta = periodic_coordinates(num_points, length)
         self.wavenumbers = (
             2 * np.pi / length * np.fft.fftfreq(num_points, d=1.0 / num_points)
         )

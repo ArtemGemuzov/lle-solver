@@ -7,8 +7,8 @@ import numpy as np
 import torch
 from deepxde.model import LossHistory
 
-from lle.numerics.grid import PeriodicGrid
 from lle.physics.fields import FieldEvolution
+from lle.physics.geometry import periodic_coordinates
 from lle.pinn.loss.causal import CausalTimePDE
 from lle.pinn.loss.relobralo import ReLoBRaLoTimePDE
 from lle.pinn.loss.schedule import CausalSchedule, CausalStage
@@ -36,15 +36,15 @@ def predict_evolution(
     interval: float,
     num_points: int,
 ) -> FieldEvolution:
-    grid = PeriodicGrid(num_points, length)
+    coordinates = periodic_coordinates(num_points, length)
     count = round(time_end / interval)
     times = np.arange(count + 1, dtype=np.float64) * interval
-    theta, time = np.meshgrid(grid.theta, times)
+    theta, time = np.meshgrid(coordinates, times)
     points = np.column_stack((theta.ravel(), time.ravel()))
     values = predict_field(net, points).reshape(theta.shape)
     if not np.isfinite(values).all():
         raise FloatingPointError("PINN predicted non-finite field values")
-    return FieldEvolution(theta=grid.theta, times=times, values=values)
+    return FieldEvolution(theta=coordinates, times=times, values=values)
 
 
 class PinnTraining:

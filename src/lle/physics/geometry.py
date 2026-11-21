@@ -2,6 +2,11 @@ import numpy as np
 from numpy.typing import NDArray
 
 
+def periodic_coordinates(num_points: int, length: float) -> NDArray[np.float64]:
+    """Возвращает равномерные координаты на [-length/2, length/2)."""
+    return np.linspace(-length / 2, length / 2, num_points, endpoint=False)
+
+
 def uniform_spacing(theta: NDArray[np.float64]) -> float:
     """Возвращает шаг равномерной координатной сетки."""
     steps = np.diff(theta)
