@@ -3,6 +3,7 @@
 Запускайте из корня проекта в окружении с бэкендом PyTorch.
 
   python scripts/pinn_gaussian.py train --config experiments/05_pinn-single-soliton/pinn_config.yaml
+  python scripts/pinn_gaussian.py train --config experiments/06_pinn-rad-sampling/rad_config.yaml
   python scripts/pinn_gaussian.py resume ИД
   python scripts/pinn_gaussian.py extend ИД --steps 80000
   python scripts/pinn_gaussian.py transfer ИД domain.time_end=4.5 training.iterations=20000

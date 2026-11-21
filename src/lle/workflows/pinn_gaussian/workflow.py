@@ -15,6 +15,7 @@ from lle.pinn.model import (
     build_network,
     lle_residual,
 )
+from lle.pinn.sampling import RADSampler
 from lle.pinn.training import PinnTraining, configure_adam
 from lle.runs.checkpoint import load_checkpoint, restore_rng, save_checkpoint
 from lle.runs.runs import PROJECT_ROOT, Run, create_run, get_run, resume_run
@@ -112,11 +113,24 @@ def _training(run: Run, config: PinnGaussianConfig) -> PinnTraining:
         learning_rate=config.training.learning_rate,
         initial_weight=config.training.initial_weight,
     )
+    rad = config.sampling.rad
+    resampler = (
+        RADSampler(
+            period=config.training.resample_every,
+            length=config.domain.length,
+            time_end=config.domain.time_end,
+            seed=config.training.seed,
+            **rad.model_dump(),
+        )
+        if rad is not None
+        else None
+    )
     training = PinnTraining(
         model,
         iterations=config.training.iterations,
         resample_every=config.training.resample_every,
         log_every=config.training.log_every,
+        resampler=resampler,
         causal_epsilons=config.loss.causal.schedule.epsilons
         if config.loss.causal and config.loss.causal.schedule
         else None,
@@ -150,6 +164,8 @@ def clear_resumed_outputs(path: Path, completed_stages: int) -> None:
         "causal_stages.csv",
         "model.pt",
         "field_evolution.npz",
+        "sampling.csv",
+        "sampling_histograms.npz",
     ):
         (path / name).unlink(missing_ok=True)
     for stage in path.glob("stage_*"):

@@ -69,6 +69,10 @@ class TrainingState(dde.callbacks.Callback):
                 if self.schedule is not None
                 else None,
                 "resample_counter": self.resampler.epochs_since_last_resample,
+                "sampling": self.resampler.state_dict()
+                if hasattr(self.resampler, "state_dict")
+                else None,
+                "anchors": model.data.anchors,
             }
         )
 
@@ -87,6 +91,17 @@ class TrainingState(dde.callbacks.Callback):
         if self.schedule is not None:
             self.schedule.load_state_dict(deepcopy(checkpoint["schedule"]))
         self.resampler.epochs_since_last_resample = checkpoint["resample_counter"]
+        model.data.anchors = deepcopy(checkpoint.get("anchors"))
+        sampling = checkpoint.get("sampling")
+        adaptive = hasattr(self.resampler, "load_state_dict")
+        if (sampling is not None) != adaptive:
+            raise ValueError(
+                "Checkpoint sampling does not match the configured sampler"
+            )
+        if sampling is not None:
+            if sampling["kind"] != "rad":
+                raise ValueError("Unsupported checkpoint sampler")
+            self.resampler.load_state_dict(sampling)
         self._best_state = {
             key: value
             for key, value in vars(model.train_state).items()

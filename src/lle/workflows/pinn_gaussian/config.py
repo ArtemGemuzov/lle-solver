@@ -72,6 +72,18 @@ class PinnCheckpointConfig(Config):
     every_steps: int = Field(default=1000, ge=1)
 
 
+class RADConfig(Config):
+    candidate_points: int = Field(default=131072, ge=1)
+    batch_size: int = Field(default=8192, ge=1)
+    power: float = Field(default=1.0, gt=0)
+    uniform_fraction: float = Field(default=0.5, ge=0, le=1)
+    warmup_steps: int = Field(default=5000, ge=0)
+
+
+class PinnSamplingConfig(Config):
+    rad: RADConfig | None = None
+
+
 class PinnGaussianConfig(Config):
     equation: EquationConfig = Field(default_factory=EquationConfig)
     initial: GaussianPulseConfig = Field(default_factory=GaussianPulseConfig)
@@ -81,6 +93,19 @@ class PinnGaussianConfig(Config):
     recording: PinnRecordingConfig = Field(default_factory=PinnRecordingConfig)
     loss: PinnLossConfig = Field(default_factory=PinnLossConfig)
     checkpoint: PinnCheckpointConfig = Field(default_factory=PinnCheckpointConfig)
+    sampling: PinnSamplingConfig = Field(default_factory=PinnSamplingConfig)
+
+    @model_validator(mode="after")
+    def validate_sampling(self) -> Self:
+        rad = self.sampling.rad
+        if rad is not None:
+            if rad.candidate_points < self.domain.interior_points:
+                raise ValueError(
+                    "RAD candidate_points must be at least interior_points"
+                )
+            if self.loss.causal is not None or self.loss.relobralo is not None:
+                raise ValueError("RAD currently requires fixed loss weights")
+        return self
 
     @model_validator(mode="after")
     def validate_recording(self) -> Self:

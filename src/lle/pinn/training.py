@@ -60,13 +60,15 @@ class PinnTraining:
         causal_epsilons: Sequence[float] | None = None,
         causal_threshold: float = 0.99,
         on_stage_end: Callable[[CausalStage], None] | None = None,
+        resampler: dde.callbacks.PDEPointResampler | None = None,
     ) -> None:
         if model.opt is None:
             raise ValueError("Configure the optimizer before creating PinnTraining")
         self.model = model
         self.iterations = iterations
         self.log_every = log_every
-        resampler = dde.callbacks.PDEPointResampler(period=resample_every)
+        if resampler is None:
+            resampler = dde.callbacks.PDEPointResampler(period=resample_every)
         callbacks: list[dde.callbacks.Callback] = [resampler]
         schedule = None
         if causal_epsilons is not None:

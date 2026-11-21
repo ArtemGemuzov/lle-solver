@@ -10,6 +10,7 @@ from deepxde.model import LossHistory
 
 from lle.physics.fields import FieldEvolution
 from lle.pinn.loss.schedule import CausalStage
+from lle.pinn.sampling import RADSampler
 from lle.pinn.training import PinnTraining, predict_evolution
 from lle.runs.checkpoint import save_checkpoint
 from lle.runs.runs import Run
@@ -58,6 +59,7 @@ def save_results(
     run: Run, config: PinnGaussianConfig, training: PinnTraining, history: LossHistory
 ) -> None:
     model = training.model
+    save_sampling(run, training)
     schedule = training.schedule
     causal = config.loss.causal
     losses = np.column_stack((history.steps, history.loss_train, history.loss_test))
@@ -103,6 +105,34 @@ def save_results(
     save_evolution(run.path, predict(model, config))
 
 
+def save_sampling(run: Run, training: PinnTraining) -> None:
+    """Сохраняет статистики RAD и распределение точек по одинаковым ячейкам."""
+    sampler = training.state.resampler
+    if not isinstance(sampler, RADSampler):
+        return
+    columns = (
+        "step",
+        "residual_mean",
+        "residual_max",
+        "residual_p90",
+        "unique_points",
+        "seconds",
+    )
+    with (run.path / "sampling.csv").open("w", encoding="utf-8", newline="") as target:
+        writer = csv.DictWriter(target, fieldnames=columns, extrasaction="ignore")
+        writer.writeheader()
+        writer.writerows(sampler.history)
+    np.savez_compressed(
+        run.path / "sampling_histograms.npz",
+        steps=np.array([row["step"] for row in sampler.history], dtype=np.int64),
+        counts=np.array(
+            [row["histogram"] for row in sampler.history], dtype=np.int64
+        ).reshape(-1, 16, 16),
+        theta_edges=np.linspace(-sampler.length / 2, sampler.length / 2, 17),
+        time_edges=np.linspace(0, sampler.time_end, 17),
+    )
+
+
 class TrainingCheckpoint(dde.callbacks.Callback):
     """Организует периодическое сохранение состояния выбранного Run."""
 
@@ -121,6 +151,7 @@ class TrainingCheckpoint(dde.callbacks.Callback):
             self.config.model_dump(mode="json"),
         )
         self._last_saved_step = self.model.train_state.step
+        save_sampling(self.run, self.training)
 
     def on_train_begin(self) -> None:
         schedule = self.training.schedule
