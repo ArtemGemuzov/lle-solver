@@ -119,7 +119,8 @@ class SamplingTest(unittest.TestCase):
             "network.hidden_width=8",
             "training.iterations=2",
             "training.resample_every=1",
-            "sampling.rad.candidate_points=32",
+            "sampling.rad.candidate_points=8",
+            "sampling.rad.replace=false",
             "sampling.rad.batch_size=7",
             "sampling.rad.warmup_steps=1",
         ]
@@ -127,6 +128,7 @@ class SamplingTest(unittest.TestCase):
             runpy.run_path(args[0], run_name="__main__")
         saved = load_checkpoint(runs.list_runs()[-1].path / "checkpoint.pt")
         self.assertEqual([r["step"] for r in saved["sampling"]["history"]], [1, 2])
+        self.assertEqual([r["unique_points"] for r in saved["sampling"]["history"]], [8, 8])
 
     def test_legacy_checkpoint(self):
         source = pinn_gaussian.train(self.config(3))

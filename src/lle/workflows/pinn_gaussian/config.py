@@ -74,6 +74,7 @@ class PinnCheckpointConfig(Config):
 
 class RADConfig(Config):
     candidate_points: int = Field(default=131072, ge=1)
+    replace: bool = True
     batch_size: int = Field(default=8192, ge=1)
     power: float = Field(default=1.0, gt=0)
     uniform_fraction: float = Field(default=0.5, ge=0, le=1)

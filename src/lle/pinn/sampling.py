@@ -40,11 +40,13 @@ class RADSampler(dde.callbacks.PDEPointResampler):
         uniform_fraction: float,
         warmup_steps: int,
         seed: int,
+        replace: bool = True,
     ):
         super().__init__(period=period)
         self.length = length
         self.time_end = time_end
         self.candidate_points = candidate_points
+        self.replace = replace
         self.batch_size = batch_size
         self.power = power
         self.uniform_fraction = uniform_fraction
@@ -107,7 +109,7 @@ class RADSampler(dde.callbacks.PDEPointResampler):
             residual, self.power, self.uniform_fraction
         )
         indices = self.rng.choice(
-            len(points), size=data.num_domain, replace=True, p=probabilities
+            len(points), size=data.num_domain, replace=self.replace, p=probabilities
         )
         selected = points[indices]
         # PDE на начальном срезе сохраняет равномерную выборку, как у TimePDE.
