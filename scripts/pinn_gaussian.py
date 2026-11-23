@@ -66,7 +66,7 @@ def main(argv=None):
     from lle.workflows import pinn_gaussian
 
     if command == "train":
-        pinn_gaussian.train(config)
+        pinn_gaussian.train_run(config)
     elif command == "resume":
         pinn_gaussian.resume(source)
     elif command == "extend":

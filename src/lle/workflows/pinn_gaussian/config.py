@@ -1,13 +1,21 @@
 from math import isclose, pi
-from typing import Annotated, Self
+from typing import Self
 
 from pydantic import Field, model_validator
 
 from lle.config import Config
+from lle.physics.problem import LLEProblem
+from lle.pinn.parameters import (
+    PinnLossConfig,
+    PinnNetworkConfig,
+    PinnTrainingConfig,
+    RADConfig,
+)
 from lle.workflows.parameters import (
-    EquationConfig,
     GaussianPulseConfig,
+    LLEParametersConfig,
     RecordingConfig,
+    gaussian_problem,
 )
 
 
@@ -18,52 +26,6 @@ class PinnDomainConfig(Config):
     initial_points: int = Field(default=256, ge=1)
 
 
-class PinnNetworkConfig(Config):
-    hidden_layers: int = Field(default=4, ge=1)
-    hidden_width: int = Field(default=64, ge=1)
-    spatial_harmonics: int = Field(default=4, ge=1)
-
-
-class PinnTrainingConfig(Config):
-    iterations: int = Field(default=20_000, ge=1)
-    learning_rate: float = Field(default=0.001, gt=0)
-    initial_weight: float = Field(default=10.0, gt=0)
-    resample_every: int = Field(default=100, ge=1)
-    log_every: int = Field(default=100, ge=1)
-    seed: int = Field(default=42, ge=0, le=2**32 - 1)
-
-
-class ReLoBRaLoConfig(Config):
-    alpha: float = Field(default=0.999, ge=0, lt=1)
-    temperature: float = Field(default=0.1, gt=0)
-    lookback_probability: float = Field(default=0.001, ge=0, le=1)
-
-
-class CausalScheduleConfig(Config):
-    epsilons: list[Annotated[float, Field(gt=0)]] = Field(
-        default_factory=lambda: [0.01, 0.1, 1.0, 10.0, 100.0],
-        min_length=2,
-    )
-    threshold: float = Field(default=0.99, gt=0, lt=1)
-
-
-class CausalConfig(Config):
-    bands: int = Field(default=4, ge=2)
-    epsilon: float = Field(default=1.0, gt=0)
-    schedule: CausalScheduleConfig | None = None
-
-
-class PinnLossConfig(Config):
-    relobralo: ReLoBRaLoConfig | None = None
-    causal: CausalConfig | None = None
-
-    @model_validator(mode="after")
-    def validate_weighting(self) -> Self:
-        if self.relobralo is not None and self.causal is not None:
-            raise ValueError("Choose either ReLoBRaLo or causal weighting")
-        return self
-
-
 class PinnRecordingConfig(RecordingConfig):
     num_points: int = Field(default=512, ge=2)
 
@@ -72,21 +34,12 @@ class PinnCheckpointConfig(Config):
     every_steps: int = Field(default=1000, ge=1)
 
 
-class RADConfig(Config):
-    candidate_points: int = Field(default=131072, ge=1)
-    replace: bool = True
-    batch_size: int = Field(default=8192, ge=1)
-    power: float = Field(default=1.0, gt=0)
-    uniform_fraction: float = Field(default=0.5, ge=0, le=1)
-    warmup_steps: int = Field(default=5000, ge=0)
-
-
 class PinnSamplingConfig(Config):
     rad: RADConfig | None = None
 
 
 class PinnGaussianConfig(Config):
-    equation: EquationConfig = Field(default_factory=EquationConfig)
+    equation: LLEParametersConfig = Field(default_factory=LLEParametersConfig)
     initial: GaussianPulseConfig = Field(default_factory=GaussianPulseConfig)
     domain: PinnDomainConfig = Field(default_factory=PinnDomainConfig)
     network: PinnNetworkConfig = Field(default_factory=PinnNetworkConfig)
@@ -95,6 +48,14 @@ class PinnGaussianConfig(Config):
     loss: PinnLossConfig = Field(default_factory=PinnLossConfig)
     checkpoint: PinnCheckpointConfig = Field(default_factory=PinnCheckpointConfig)
     sampling: PinnSamplingConfig = Field(default_factory=PinnSamplingConfig)
+
+    def to_problem(self) -> LLEProblem:
+        return gaussian_problem(
+            self.equation,
+            self.initial,
+            length=self.domain.length,
+            time_end=self.domain.time_end,
+        )
 
     @model_validator(mode="after")
     def validate_sampling(self) -> Self:

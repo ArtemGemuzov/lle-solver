@@ -23,23 +23,28 @@ from lle.numerics.integrators import rk4_step
 from functools import partial
 from lle.numerics.lle import linear_operator, nonlinear_term
 from lle.numerics.split_schemes import StrangSplitStep
+from lle.numerics.ssfm import solve
 from lle.numerics.steps import FourierStep, IntegratorStep
 from lle.runs.checkpoint import load_checkpoint, save_checkpoint
-from lle.workflows.pinn_gaussian.outputs import TrainingCheckpoint
+from lle.pinn.training import TrainingCheckpoint
 from lle.physics.equation import LLEParameters
 from lle.physics.initial import GaussianPulse
+from lle.physics.problem import LLEProblem
 from lle.pinn.features import PeriodicFeatures
 from lle.pinn.model import (
+    build_model,
     build_network,
     lle_residual,
     evaluate_residual,
     predict_field,
 )
 from lle.workflows.pinn_gaussian.workflow import _build_model
-from lle.pinn.training import PinnTraining, configure_adam
+from lle.pinn.training import PinnTraining, configure_adam, predict_evolution, train_model
 from lle.runs import runs
-from lle.storage import load_evolution, save_evolution
-from lle.workflows import pinn_gaussian, ssfm_gaussian
+from lle.storage import load_evolution
+from lle.workflows import pinn_gaussian
+from lle.workflows.ssfm_gaussian.config import SsfmGaussianConfig
+from lle.workflows.ssfm_gaussian.workflow import run as run_ssfm, simulate
 
 
 class WorkflowsTest(unittest.TestCase):
@@ -79,16 +84,19 @@ class WorkflowsTest(unittest.TestCase):
 
     def test_ssfm_and_storage(self):
         config = load_config(
-            ssfm_gaussian.SsfmGaussianConfig,
+            SsfmGaussianConfig,
             overrides=[
                 "grid.num_points=32",
                 "solver.time_end=0.02",
                 "recording.interval=0.01",
             ],
         )
-        field = ssfm_gaussian.simulate(config)
-        save_evolution(self.root, field)
-        np.testing.assert_array_equal(load_evolution(self.root).values, field.values)
+        field = simulate(config)
+        run = run_ssfm(config)
+        self.assertEqual(run.load_metadata()["status"], "complete")
+        self.assertEqual(runs.list_runs(script="scripts/gaussian.py"), [run])
+        self.assertEqual(run.load_config(SsfmGaussianConfig), config)
+        np.testing.assert_array_equal(load_evolution(run.path).values, field.values)
         # Однородное поле без накачки: известны затухание и нелинейная фаза.
         grid = PeriodicGrid(16, 2 * np.pi)
         equation = LLEParameters(3.0, 0.0, -0.1)
@@ -102,6 +110,29 @@ class WorkflowsTest(unittest.TestCase):
             -0.1 + 1j * (abs(start) ** 2 * (1 - np.exp(-0.2)) / 2 - 0.3)
         )
         np.testing.assert_allclose(actual, expected, atol=2e-8, rtol=0)
+
+    def test_training_in_memory_matches_saved_run(self):
+        config = self.config(5)
+        model = build_model(
+            config.to_problem(), network=config.network, loss=config.loss,
+            interior_points=config.domain.interior_points, initial_points=config.domain.initial_points,
+            seed=config.training.seed,
+        )
+        snapshots = []
+        history = train_model(
+            model, config.training, checkpoint_every=2, on_checkpoint=snapshots.append
+        )
+        self.assertEqual(list(self.root.iterdir()), [])
+        self.assertIs(history, model.losshistory)
+        self.assertEqual([state["train_state"]["step"] for state in snapshots], [2, 4, 5])
+        run = pinn_gaussian.train_run(config)
+        saved = load_checkpoint(run.path / "checkpoint.pt")
+        for name, weights in snapshots[-1]["model"].items():
+            torch.testing.assert_close(weights, saved["model"][name], rtol=0, atol=0)
+        np.testing.assert_array_equal(model.losshistory.loss_train, saved["history"]["loss_train"])
+        reference = load_evolution(run.path)
+        predicted = predict_evolution(model.net, theta=reference.theta, times=reference.times)
+        np.testing.assert_array_equal(predicted.values, reference.values)
 
     def test_extend_matches_uninterrupted(self):
         full = pinn_gaussian.train(self.config())
@@ -307,6 +338,46 @@ class WorkflowsTest(unittest.TestCase):
         )
         actual = scheme.advance(np.ones(16, dtype=np.complex128), 10, 0.0001)
         np.testing.assert_allclose(actual, np.ones(16), atol=1e-10, rtol=0)
+
+    def test_shared_problem_on_reference_axes(self):
+        value = 0.5 - 0.5j
+        problem = LLEProblem(
+            LLEParameters(detuning=1.5, pump_amplitude=1.0, beta2=-0.1),
+            lambda theta: np.full(theta.shape, value, dtype=np.complex128),
+            length=3.0,
+            time_end=0.02,
+        )
+        reference = solve(problem, num_points=16, time_step=0.0001, recording_interval=0.01)
+        config = self.config()
+        model = build_model(
+            problem, network=config.network, loss=config.loss, seed=42,
+            interior_points=8, initial_points=8,
+        )
+        with torch.no_grad():
+            for parameter in model.net.parameters():
+                parameter.zero_()
+            model.net.linears[-1].bias.copy_(torch.tensor([value.real, value.imag]))
+        points = np.array([[0.2, 0.0], [-0.3, 0.01]], dtype=np.float32)
+        for condition, expected in zip(model.data.bcs, (value.real, value.imag), strict=True):
+            np.testing.assert_allclose(condition.func(points, 0, 2, None).cpu(), expected)
+        for residual in evaluate_residual(model.net, points, model.data.pde):
+            np.testing.assert_allclose(residual, 0.0, atol=1e-7)
+        prediction = predict_evolution(model.net, theta=reference.theta, times=reference.times)
+        np.testing.assert_array_equal(prediction.theta, reference.theta)
+        np.testing.assert_array_equal(prediction.times, reference.times)
+        np.testing.assert_allclose(prediction.values, reference.values, atol=1e-9, rtol=0)
+
+    def test_prediction_on_arbitrary_axes(self):
+        net = torch.nn.Linear(2, 2, bias=False, dtype=torch.float64)
+        with torch.no_grad():
+            net.weight.copy_(torch.eye(2, dtype=torch.float64))
+        theta = np.linspace(-1, 2, 3001)
+        times = np.array([0.41, 0.0, 0.12])
+        field = predict_evolution(net, theta=theta, times=times)
+        np.testing.assert_array_equal(field.values, theta[None, :] + 1j * times[:, None])
+        for axis in ([], [[0]], [np.nan]):
+            with self.assertRaises(ValueError):
+                predict_evolution(net, theta=axis, times=[0])
 
     def test_shared_initial_and_independent_state(self):
         config = self.config(2)

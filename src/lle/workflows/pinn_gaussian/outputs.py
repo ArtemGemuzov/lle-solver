@@ -9,9 +9,9 @@ import torch
 from deepxde.model import LossHistory
 
 from lle.physics.fields import FieldEvolution
+from lle.physics.geometry import periodic_coordinates
 from lle.pinn.loss.schedule import CausalStage
-from lle.pinn.sampling import RADSampler
-from lle.pinn.training import PinnTraining, predict_evolution
+from lle.pinn.training import predict_evolution
 from lle.runs.checkpoint import save_checkpoint
 from lle.runs.runs import Run
 from lle.storage import save_evolution
@@ -20,13 +20,10 @@ from .config import PinnGaussianConfig
 
 
 def predict(model: dde.Model, config: PinnGaussianConfig) -> FieldEvolution:
-    return predict_evolution(
-        model.net,
-        length=config.domain.length,
-        time_end=config.domain.time_end,
-        interval=config.recording.interval,
-        num_points=config.recording.num_points,
-    )
+    count = round(config.domain.time_end / config.recording.interval)
+    times = np.arange(count + 1, dtype=np.float64) * config.recording.interval
+    theta = periodic_coordinates(config.recording.num_points, config.domain.length)
+    return predict_evolution(model.net, theta=theta, times=times)
 
 
 def save_stage(
@@ -56,11 +53,8 @@ def training_runtime(device: torch.device) -> dict[str, str]:
 
 
 def save_results(
-    run: Run, config: PinnGaussianConfig, training: PinnTraining, history: LossHistory
+    run: Run, config: PinnGaussianConfig, model: dde.Model, history: LossHistory
 ) -> None:
-    model = training.model
-    save_sampling(run, training)
-    schedule = training.schedule
     causal = config.loss.causal
     losses = np.column_stack((history.steps, history.loss_train, history.loss_test))
     np.savetxt(
@@ -76,13 +70,6 @@ def save_results(
     )
     if not np.isfinite(losses).all():
         raise FloatingPointError("Non-finite PINN loss detected")
-    if schedule is not None:
-        with (run.path / "causal_stages.csv").open(
-            "x", encoding="utf-8", newline=""
-        ) as target:
-            writer = csv.writer(target)
-            writer.writerow(CausalStage._fields)
-            writer.writerows(schedule.history)
     if config.loss.relobralo is not None or causal is not None:
         if causal is None:
             columns = ["raw_pde", "raw_ic", "weight_pde", "weight_ic"]
@@ -105,10 +92,19 @@ def save_results(
     save_evolution(run.path, predict(model, config))
 
 
-def save_sampling(run: Run, training: PinnTraining) -> None:
-    """Сохраняет статистики RAD и распределение точек по одинаковым ячейкам."""
-    sampler = training.state.resampler
-    if not isinstance(sampler, RADSampler):
+def save_training_checkpoint(run: Run, config: PinnGaussianConfig, state: dict) -> None:
+    """Сохраняет снимок обучения и диагностику адаптивных точек."""
+    save_checkpoint(run.path / "checkpoint.pt", state, config.model_dump(mode="json"))
+    schedule = state["schedule"]
+    if schedule is not None:
+        with (run.path / "causal_stages.csv").open(
+            "w", encoding="utf-8", newline=""
+        ) as target:
+            writer = csv.writer(target)
+            writer.writerow(CausalStage._fields)
+            writer.writerows(schedule["history"])
+    sampling = state.get("sampling")
+    if sampling is None:
         return
     columns = (
         "step",
@@ -121,53 +117,15 @@ def save_sampling(run: Run, training: PinnTraining) -> None:
     with (run.path / "sampling.csv").open("w", encoding="utf-8", newline="") as target:
         writer = csv.DictWriter(target, fieldnames=columns, extrasaction="ignore")
         writer.writeheader()
-        writer.writerows(sampler.history)
+        writer.writerows(sampling["history"])
     np.savez_compressed(
         run.path / "sampling_histograms.npz",
-        steps=np.array([row["step"] for row in sampler.history], dtype=np.int64),
+        steps=np.array([row["step"] for row in sampling["history"]], dtype=np.int64),
         counts=np.array(
-            [row["histogram"] for row in sampler.history], dtype=np.int64
+            [row["histogram"] for row in sampling["history"]], dtype=np.int64
         ).reshape(-1, 16, 16),
-        theta_edges=np.linspace(-sampler.length / 2, sampler.length / 2, 17),
-        time_edges=np.linspace(0, sampler.time_end, 17),
+        theta_edges=np.linspace(
+            -config.domain.length / 2, config.domain.length / 2, 17
+        ),
+        time_edges=np.linspace(0, config.domain.time_end, 17),
     )
-
-
-class TrainingCheckpoint(dde.callbacks.Callback):
-    """Организует периодическое сохранение состояния выбранного Run."""
-
-    def __init__(self, run: Run, config: PinnGaussianConfig, training: PinnTraining):
-        super().__init__()
-        self.run = run
-        self.config = config
-        self.training = training
-        self._stage_count = 0
-        self._last_saved_step = None
-
-    def save(self) -> None:
-        save_checkpoint(
-            self.run.path / "checkpoint.pt",
-            self.training.state_dict(),
-            self.config.model_dump(mode="json"),
-        )
-        self._last_saved_step = self.model.train_state.step
-        save_sampling(self.run, self.training)
-
-    def on_train_begin(self) -> None:
-        schedule = self.training.schedule
-        self._stage_count = len(schedule.history) if schedule else 0
-
-    def on_epoch_end(self) -> None:
-        schedule = self.training.schedule
-        stages = len(schedule.history) if schedule else 0
-        if (
-            self.model.train_state.step % self.config.checkpoint.every_steps == 0
-            or stages != self._stage_count
-            or self.training.complete
-        ):
-            self.save()
-        self._stage_count = stages
-
-    def on_train_end(self) -> None:
-        if self._last_saved_step != self.model.train_state.step:
-            self.save()

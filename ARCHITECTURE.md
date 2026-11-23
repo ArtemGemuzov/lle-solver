@@ -46,6 +46,8 @@ Run существует независимо от Experiment. Один Run мо
 использует `torch` для сериализации и сохранения состояния генераторов.
 
 Import Linter проверяет эти правила по контрактам в `pyproject.toml`.
+Отдельный контракт проверяет независимость операций обучения в памяти
+(`lle.pinn`) от `runs`, `storage`, `config` и `workflows`.
 Скрипты и блокноты используют библиотеку извне, в том числе для сборки
 расчетов из `numerics` и анализа сохраненных результатов.
 
@@ -57,35 +59,39 @@ Import Linter проверяет эти правила по контрактам
 
 Общие части конфигураций находятся в `lle.workflows.parameters`.
 Полный конфиг и проверки связей между его частями принадлежат сценарию:
-`SsfmGaussianConfig` в `lle.workflows.ssfm_gaussian`, `PinnGaussianConfig`
-и вложенные модели в `lle.workflows.pinn_gaussian.config`.
+`SsfmGaussianConfig` в `lle.workflows.ssfm_gaussian.config`,
+`PinnGaussianConfig` в `lle.workflows.pinn_gaussian.config`.
+В обоих пакетах операции сценария находятся в `workflow.py`.
 
 ## API сценариев
 
 ```python
 from lle.config import load_config
-from lle.workflows import ssfm_gaussian, pinn_gaussian
+from lle.workflows import pinn_gaussian
+from lle.workflows.ssfm_gaussian.config import SsfmGaussianConfig
+from lle.workflows.ssfm_gaussian.workflow import run as run_ssfm
 from lle.storage import load_evolution
 
-config = load_config(ssfm_gaussian.SsfmGaussianConfig, overrides=[
+config = load_config(SsfmGaussianConfig, overrides=[
     "solver.time_end=1.0", "recording.interval=0.1",
 ])
-field = ssfm_gaussian.simulate(config)
+ssfm_run = run_ssfm(config)
+field = load_evolution(ssfm_run.path)
 
 pinn_config = load_config(pinn_gaussian.PinnGaussianConfig, overrides=[
     "domain.time_end=1.0", "recording.interval=0.1",
 ])
-run = pinn_gaussian.train(pinn_config)
+run = pinn_gaussian.train_run(pinn_config)
 pinn_field = load_evolution(run.path)
 ```
 
-`simulate` возвращает `FieldEvolution` без записи на диск. Для сохранения
-используются `create_run(config, script=...)` и `save_evolution(run.path, field)`;
-это также делает CLI `scripts/gaussian.py`.
+`run_ssfm(config)` создает Run, сохраняет эволюцию поля и возвращает
+завершенный запуск. CLI `scripts/gaussian.py` вызывает этот же сценарий.
+Для расчета в памяти `simulate(config)` возвращает `FieldEvolution`.
 
 Операции PINN возвращают Run и сохраняют поле, модель, историю потерь и чекпоинт:
 
-- `train(config)` — новый Run, обучение с нуля.
+- `train_run(config)` создает новый Run для обучения с нуля. Имя `train(config)` также поддерживается.
 - `resume(run_or_id)` — продолжение незавершённого Run в том же каталоге.
 - `extend(run_or_id, steps)` — новый дочерний Run, дополнительные шаги
   от последнего чекпоинта с сохранением Adam, точек, RNG и счётчиков.
@@ -96,12 +102,31 @@ pinn_field = load_evolution(run.path)
   начальное предсказание комплексного поля сохранялось. Архитектура сети
   и пространственная длина должны совпадать.
 
-Оба сценария создают `LLEParameters` и `GaussianPulse` из своих конфигов.
-`numerics.lle.linear_operator`, `numerics.lle.nonlinear_term` и
-`pinn.model.lle_residual` получают один тип параметров
-уравнения. При сборке SSFM параметры фиксируются через `functools.partial`.
-Фурье-операторы и производные autograd остаются реализациями методов.
-Начальное комплексное поле вычисляется общим объектом `GaussianPulse`.
+Оба гауссовых конфига предоставляют `to_problem()`. Результат
+`lle.physics.problem.LLEProblem` объединяет параметры уравнения, функцию
+начального комплексного поля от вектора theta, длину кольца и конец интервала.
+SSFM и PINN могут принять один экземпляр постановки. Например, используя
+`config` и `pinn_config` из примера выше:
+
+```python
+from lle.numerics.ssfm import solve
+from lle.pinn.model import build_model
+from lle.pinn.training import predict_evolution, train_model
+
+problem = config.to_problem()
+reference = solve(problem, num_points=128, time_step=0.001, recording_interval=0.1)
+model = build_model(
+    problem, network=pinn_config.network, loss=pinn_config.loss,
+    interior_points=128, initial_points=32, seed=42,
+)
+history = train_model(model, pinn_config.training)
+prediction = predict_evolution(model.net, theta=reference.theta, times=reference.times)
+```
+
+`predict_evolution` возвращает комплексное поле на декартовом произведении
+заданных осей, сохраняя порядок координат и времен. Workflow строит регулярные
+оси по настройкам записи. Фурье-операторы SSFM и производные autograd в PINN
+используют параметры одной постановки.
 
 `Field`, `FieldEvolution`, `Intensity` и `IntensityEvolution` находятся в
 `lle.physics.fields`; SSFM и PINN строят периодические координаты через
@@ -116,9 +141,16 @@ pinn_field = load_evolution(run.path)
 не применяется к произвольной сети и проверяет совместимость пространственных признаков.
 
 `predict_field(net, points)` и `evaluate_residual(net, points, residual)`
-не требуют обучающей выборки или оптимизатора. Сценарий выбирает потери,
-собирает `dde.Model`, настраивает Adam и создаёт `PinnTraining`.
-Внутренние функции сценария типизированы через `PinnGaussianConfig` и `Run`.
+не требуют обучающей выборки или оптимизатора. `pinn.model.build_model` собирает модель, а
+`pinn.training.train_model` настраивает Adam, обучает переданную модель
+и возвращает историю потерь. Настройки метода определены в `pinn.parameters`. Для адаптивной выборки передается
+`rad`, для смены стадий causal weighting передается `schedule`.
+
+Опциональный `on_checkpoint(state)` получает независимый снимок каждые
+`checkpoint_every` шагов, при смене стадии и после завершения обучения.
+`train_run` вызывает `train_model`, передавая функции сохранения снимков и полей стадий. При продолжении
+`prepare_training` позволяет загрузить состояние между созданием Adam и
+началом оптимизации.
 
 `PinnTraining.state_dict()` возвращает независимый снимок состояния сети,
 Adam, точек, истории, адаптивных потерь, стадий и счётчиков.
@@ -153,7 +185,7 @@ PDE-точки на начальном срезе обновляются рав�
 
 `runs.checkpoint` упаковывает состояние, конфиг, версии библиотек и глобальные
 генераторы Python, NumPy и Torch, атомарно записывает файл и читает его обратно.
-Сценарий задаёт период сохранения через callback в `outputs.py`, проверяет
+Сценарий передает `save_training_checkpoint` из `outputs.py` в обучение, проверяет
 конфиги при `resume` и восстанавливает RNG после создания модели и загрузки состояния.
 При `extend` сценарий формирует новый конфиг, сохраняя состояние оптимизатора.
 Поле `script` остаётся метаданными; инфраструктура не проверяет его при возобновлении.

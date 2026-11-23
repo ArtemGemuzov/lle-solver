@@ -9,6 +9,11 @@ from deepxde.nn.pytorch import FNN
 from numpy.typing import NDArray
 
 from lle.physics.equation import LLEParameters
+from lle.physics.problem import LLEProblem
+from lle.pinn.features import PeriodicFeatures
+from lle.pinn.loss.causal import CausalTimePDE
+from lle.pinn.loss.relobralo import ReLoBRaLoTimePDE
+from lle.pinn.parameters import PinnLossConfig, PinnNetworkConfig
 
 
 def build_network(
@@ -74,3 +79,80 @@ def predict_field(
         inputs = torch.as_tensor(points, dtype=parameter.dtype, device=parameter.device)
         values = net(inputs).detach().cpu().numpy().astype(np.float64)
     return values[:, 0] + 1j * values[:, 1]
+
+
+def build_model(
+    problem: LLEProblem,
+    *,
+    network: PinnNetworkConfig,
+    loss: PinnLossConfig,
+    interior_points: int,
+    initial_points: int,
+    seed: int,
+) -> dde.Model:
+    """Собирает обучающую задачу и выбирает взвешивание потерь."""
+    if interior_points < 1 or initial_points < 1:
+        raise ValueError("Training point counts must be positive")
+    dde.config.set_random_seed(seed)
+    half_length = problem.length / 2
+    geometry = dde.geometry.GeometryXTime(
+        dde.geometry.Interval(-half_length, half_length),
+        dde.geometry.TimeDomain(0, problem.time_end),
+    )
+    residual = lle_residual(problem.equation)
+    conditions = [
+        dde.icbc.IC(
+            geometry,
+            lambda points: problem.initial(points[:, 0]).real[:, None],
+            lambda _, on: on,
+            component=0,
+        ),
+        dde.icbc.IC(
+            geometry,
+            lambda points: problem.initial(points[:, 0]).imag[:, None],
+            lambda _, on: on,
+            component=1,
+        ),
+    ]
+    options = {
+        "num_domain": interior_points,
+        "num_initial": initial_points,
+        "num_test": interior_points,
+        "train_distribution": "pseudo",
+    }
+    balancing = loss.relobralo
+    causal = loss.causal
+    if balancing is not None:
+        data = ReLoBRaLoTimePDE(
+            geometry,
+            residual,
+            conditions,
+            **options,
+            alpha=balancing.alpha,
+            temperature=balancing.temperature,
+            lookback_probability=balancing.lookback_probability,
+            seed=seed,
+        )
+    elif causal is not None:
+        data = CausalTimePDE(
+            geometry,
+            residual,
+            conditions,
+            **options,
+            bands=causal.bands,
+            epsilon=causal.schedule.epsilons[0] if causal.schedule else causal.epsilon,
+            time_end=problem.time_end,
+        )
+    else:
+        data = dde.data.TimePDE(geometry, residual, conditions, **options)
+    # Сохраняем порядок генерации точек и инициализации весов для воспроизводимости.
+    features = PeriodicFeatures(
+        problem.length, problem.time_end, network.spatial_harmonics
+    )
+    net = build_network(
+        input_size=features.output_size,
+        hidden_layers=network.hidden_layers,
+        hidden_width=network.hidden_width,
+    )
+    net.apply_feature_transform(features)
+    return dde.Model(data, net)

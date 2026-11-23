@@ -12,14 +12,17 @@ from .config import PinnGaussianConfig
 if TYPE_CHECKING:
     from lle.runs.runs import Run
 
-__all__ = ["PinnGaussianConfig", "train", "resume", "extend", "transfer"]
+__all__ = ["PinnGaussianConfig", "train", "train_run", "resume", "extend", "transfer"]
 
 
-def train(config: PinnGaussianConfig) -> Run:
+def train_run(config: PinnGaussianConfig) -> Run:
     """Обучает новую модель и возвращает Run."""
-    from .workflow import train as execute
+    from .workflow import train_run as execute
 
     return execute(config)
+
+
+train = train_run
 
 
 def resume(source: Run | str) -> Run:

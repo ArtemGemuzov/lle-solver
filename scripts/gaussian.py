@@ -5,16 +5,14 @@
 """
 
 from lle.config import config_from_cli
-from lle.runs.runs import create_run
-from lle.storage import save_evolution
-from lle.workflows.ssfm_gaussian import SsfmGaussianConfig, simulate
+from lle.workflows.ssfm_gaussian.config import SsfmGaussianConfig
+from lle.workflows.ssfm_gaussian.workflow import run
 
 
 def main() -> None:
     config = config_from_cli(SsfmGaussianConfig)
-    with create_run(config, script=__file__) as run:
-        save_evolution(run.path, simulate(config))
-    print(f"Run: {run.id}")
+    result = run(config)
+    print(f"Run: {result.id}")
 
 
 if __name__ == "__main__":

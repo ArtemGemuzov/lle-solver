@@ -80,6 +80,12 @@ type = "independence"
 modules = ["lle.workflows.ssfm_gaussian", "lle.workflows.pinn_gaussian"]
 
 [[tool.importlinter.contracts]]
+name = "In-memory PINN operations are independent of run workflows and storage"
+type = "forbidden"
+source_modules = ["lle.pinn"]
+forbidden_modules = ["lle.runs", "lle.storage", "lle.workflows", "lle.config"]
+
+[[tool.importlinter.contracts]]
 name = "Physics, numerics and SSFM are independent of PINN libraries"
 type = "forbidden"
 source_modules = ["lle.physics", "lle.numerics", "lle.workflows.ssfm_gaussian"]

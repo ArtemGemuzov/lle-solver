@@ -18,7 +18,7 @@ from lle.pinn.sampling import residual_probabilities
 from lle.runs.checkpoint import load_checkpoint
 from lle.runs import runs
 from lle.workflows import pinn_gaussian
-from lle.workflows.pinn_gaussian.outputs import TrainingCheckpoint
+from lle.pinn.training import TrainingCheckpoint
 
 
 class SamplingTest(unittest.TestCase):
