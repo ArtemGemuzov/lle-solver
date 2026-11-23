@@ -26,6 +26,9 @@ ITERATIONS = 2_000_000
 class Experiment:
     points: int
     candidate_points: int | None
+    time_end: float = TIME_END
+    iterations: int = ITERATIONS
+    replace: bool = True
 
     @property
     def name(self) -> str:
@@ -40,15 +43,16 @@ class Experiment:
             "train",
             "--config",
             str(CONFIG),
-            f"domain.time_end={TIME_END}",
+            f"domain.time_end={self.time_end}",
             f"domain.interior_points={self.points}",
-            f"training.iterations={ITERATIONS}",
+            f"training.iterations={self.iterations}",
             "training.resample_every=100",
         ]
         if self.candidate_points is None:
             command.append("sampling.rad=null")
         else:
             command.append(f"sampling.rad.candidate_points={self.candidate_points}")
+            command.append(f"sampling.rad.replace={str(self.replace).lower()}")
         return command
 
 
