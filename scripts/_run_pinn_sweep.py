@@ -1,9 +1,9 @@
-"""Сравнивает равномерную выборку и RAD на T = 4 за 500000 шагов Adam.
+"""Сравнивает равномерную выборку и RAD с пулами 4N и 16N на T = 5.
 
 Запуск из корня репозитория на GPU-сервере:
   conda activate a.gemuzov
   python scripts/_run_pinn_sweep.py --dry-run
-  nohup python -u scripts/_run_pinn_sweep.py >> pinn_sweep.log 2>&1 < /dev/null &
+  nohup python -u scripts/_run_pinn_sweep.py >> pinn_t5_pool_sweep.log 2>&1 < /dev/null &
 
 Каждое обучение начинается после выхода предыдущего процесса.
 """
@@ -18,20 +18,20 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 TRAINER = Path("scripts/pinn_gaussian.py")
 CONFIG = Path("experiments/06_pinn-rad-sampling/rad_config.yaml")
-TIME_END = 4.0
-ITERATIONS = 500_000
+TIME_END = 5.0
+ITERATIONS = 2_000_000
 
 
 @dataclass(frozen=True)
 class Experiment:
     points: int
-    resample_every: int
-    use_rad: bool
+    candidate_points: int | None
 
     @property
     def name(self) -> str:
-        sampler = "RAD" if self.use_rad else "uniform"
-        return f"{sampler}, N={self.points}, resample_every={self.resample_every}"
+        if self.candidate_points is None:
+            return f"Uniform, N={self.points}"
+        return f"RAD, N={self.points}, candidate_points={self.candidate_points}"
 
     def command(self) -> list[str]:
         command = [
@@ -43,18 +43,19 @@ class Experiment:
             f"domain.time_end={TIME_END}",
             f"domain.interior_points={self.points}",
             f"training.iterations={ITERATIONS}",
-            f"training.resample_every={self.resample_every}",
+            "training.resample_every=100",
         ]
-        if not self.use_rad:
+        if self.candidate_points is None:
             command.append("sampling.rad=null")
+        else:
+            command.append(f"sampling.rad.candidate_points={self.candidate_points}")
         return command
 
 
 EXPERIMENTS = tuple(
-    Experiment(points, period, use_rad)
-    for points in (32_768, 16_384, 8_192)
-    for period in (1_000, 100)
-    for use_rad in (False, True)
+    Experiment(points, candidates)
+    for points in (131_072, 32_768)
+    for candidates in (None, 4 * points, 16 * points)
 )
 
 
