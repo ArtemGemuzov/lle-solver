@@ -25,7 +25,8 @@ Run существует независимо от Experiment. Один Run мо
 - `lle.config` — базовый Config, загрузка YAML и переопределений.
 - `lle.runs` — создание, поиск, статусы и блокировка запусков, сведения Git, хранение чекпоинтов и RNG.
 - `lle.analysis`, `lle.viz` — анализ и визуализация общих типов поля.
-- `scripts/` — CLI-оболочки и запуск серий, использующие библиотечный API.
+- `lle.cli` разбирает команды `lle` и передает их публичным операциям workflow.
+- `scripts/` содержит конкретные сценарии и серии расчетов.
 - `experiments/` — исследовательские постановки и анализ результатов.
 
 ## Граф зависимостей
@@ -39,6 +40,7 @@ Run существует независимо от Experiment. Один Run мо
 | `numerics`, `storage`, `analysis`, `viz` | `physics` |
 | `pinn` | `physics`, `random_state` |
 | `runs` | `config`, `random_state` |
+| `cli` | `config`, `runs`, `workflows` |
 | `workflows` | `config`, `physics`, `numerics`, `pinn`, `runs`, `storage` |
 
 Сценарии SSFM и PINN независимы друг от друга и используют общие параметры
@@ -87,7 +89,7 @@ pinn_field = load_evolution(run.path)
 ```
 
 `run_ssfm(config)` создает Run, сохраняет эволюцию поля и возвращает
-завершенный запуск. CLI `scripts/gaussian.py` вызывает этот же сценарий.
+завершенный запуск. CLI `lle ssfm solve` вызывает этот же сценарий.
 Для расчета в памяти `simulate(config)` возвращает `FieldEvolution`.
 
 `lle.numerics.ssfm.solve(scheme, grid, state, num_steps=...,

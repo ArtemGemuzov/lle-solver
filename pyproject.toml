@@ -10,6 +10,9 @@ dependencies = [
     "scipy>=1.17.1",
 ]
 
+[project.scripts]
+lle = "lle.cli.main:main"
+
 [project.optional-dependencies]
 notebooks = [
     "ipykernel>=6",
@@ -57,21 +60,33 @@ allowed_importers = [
 ]
 
 [[tool.importlinter.contracts]]
-name = "Only run infrastructure and workflows import configuration"
+name = "CLI, run infrastructure and workflows import configuration"
 type = "protected"
 protected_modules = ["lle.config"]
-allowed_importers = ["lle.runs", "lle.workflows"]
+allowed_importers = ["lle.cli", "lle.runs", "lle.workflows"]
 
 [[tool.importlinter.contracts]]
 name = "Only workflows import computation and storage packages"
 type = "protected"
-protected_modules = ["lle.numerics", "lle.pinn", "lle.runs", "lle.storage"]
+protected_modules = ["lle.numerics", "lle.pinn", "lle.storage"]
 allowed_importers = ["lle.workflows"]
 
 [[tool.importlinter.contracts]]
-name = "Analysis, visualization and workflows are entry points"
+name = "CLI and workflows access runs"
 type = "protected"
-protected_modules = ["lle.analysis", "lle.viz", "lle.workflows"]
+protected_modules = ["lle.runs"]
+allowed_importers = ["lle.cli", "lle.workflows"]
+
+[[tool.importlinter.contracts]]
+name = "CLI invokes workflows"
+type = "protected"
+protected_modules = ["lle.workflows"]
+allowed_importers = ["lle.cli"]
+
+[[tool.importlinter.contracts]]
+name = "Analysis, visualization and CLI are entry points"
+type = "protected"
+protected_modules = ["lle.analysis", "lle.viz", "lle.cli"]
 allowed_importers = []
 
 [[tool.importlinter.contracts]]

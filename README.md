@@ -64,12 +64,12 @@ uv sync --locked --extra pinn-cuda --extra notebooks
 драйвер NVIDIA. `uv sync` без `--extra` устанавливает базовые зависимости
 и удаляет пакеты дополнительных профилей из окружения.
 
-### Запуск скриптов
+### Команды lle
 
-`uv run --locked` синхронизирует окружение и запускает скрипт.
+`uv run --locked` синхронизирует окружение и запускает команду.
 
 ```bash
-uv run --locked scripts/gaussian.py
+uv run --locked lle ssfm solve
 ```
 
 Для PINN сначала укажите бэкенд PyTorch в PowerShell.
@@ -81,18 +81,31 @@ $env:DDE_BACKEND = 'pytorch'
 Для обучения на CPU используйте профиль `pinn`.
 
 ```powershell
-uv run --locked --extra pinn scripts/pinn_gaussian.py train
+uv run --locked --extra pinn lle pinn train
 ```
 
 Для обучения на NVIDIA используйте профиль `pinn-cuda`.
 
 ```powershell
-uv run --locked --extra pinn-cuda scripts/pinn_gaussian.py train
+uv run --locked --extra pinn-cuda lle pinn train
 ```
 
-Если нужный профиль уже установлен, `--no-sync` запускает скрипт в текущем
+Если нужный профиль уже установлен, `--no-sync` запускает команду в текущем
 окружении проекта без синхронизации.
 
 ```powershell
-uv run --no-sync scripts/pinn_gaussian.py train
+uv run --no-sync lle pinn train
 ```
+
+Запуск с заданным YAML, продолжение и перенос весов из активного окружения:
+
+```bash
+lle pinn train --config experiments/06_pinn-rad-sampling/rad_config.yaml
+lle pinn resume RUN_ID
+lle pinn extend RUN_ID --steps 80000
+lle pinn transfer RUN_ID domain.time_end=4.5 training.iterations=20000
+```
+
+В conda-окружении GPU-сервера доступны те же команды. Для конкретной серии
+расчетов используйте ее скрипт, например
+`python scripts/_run_pinn_sweep.py --dry-run`.

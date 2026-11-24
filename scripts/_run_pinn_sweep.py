@@ -16,7 +16,6 @@ from dataclasses import dataclass
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-TRAINER = Path("scripts/pinn_gaussian.py")
 CONFIG = Path("experiments/06_pinn-rad-sampling/rad_config.yaml")
 TIME_END = 5.0
 ITERATIONS = 2_000_000
@@ -39,7 +38,9 @@ class Experiment:
     def command(self) -> list[str]:
         command = [
             sys.executable,
-            str(TRAINER),
+            "-m",
+            "lle.cli",
+            "pinn",
             "train",
             "--config",
             str(CONFIG),

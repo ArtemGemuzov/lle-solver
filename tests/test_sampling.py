@@ -5,10 +5,10 @@ import os
 os.environ["DDE_BACKEND"] = "pytorch"
 os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
-import runpy
-import sys
 import unittest
 from unittest.mock import patch
+
+from lle.cli.main import main
 
 import numpy as np
 import torch
@@ -106,7 +106,7 @@ class SamplingTest(unittest.TestCase):
 
     def test_cli(self):
         args = [
-            "scripts/pinn_gaussian.py",
+            "pinn",
             "train",
             "--config",
             "experiments/06_pinn-rad-sampling/rad_config.yaml",
@@ -124,8 +124,7 @@ class SamplingTest(unittest.TestCase):
             "sampling.rad.batch_size=7",
             "sampling.rad.warmup_steps=1",
         ]
-        with patch.object(sys, "argv", args):
-            runpy.run_path(args[0], run_name="__main__")
+        main(args)
         saved = load_checkpoint(runs.list_runs()[-1].path / "checkpoint.pt")
         self.assertEqual([r["step"] for r in saved["sampling"]["history"]], [1, 2])
         self.assertEqual([r["unique_points"] for r in saved["sampling"]["history"]], [8, 8])

@@ -7,8 +7,6 @@ os.environ["CUDA_VISIBLE_DEVICES"] = ""
 
 import contextlib
 import io
-import runpy
-import sys
 import tempfile
 import unittest
 from pathlib import Path
@@ -17,6 +15,7 @@ from unittest.mock import patch
 import numpy as np
 import torch
 
+from lle.cli.main import main
 from lle.config import load_config
 from lle.numerics.grid import PeriodicGrid
 from lle.numerics.integrators import rk4_step
@@ -223,7 +222,8 @@ class WorkflowsTest(unittest.TestCase):
                         pinn_gaussian.train(config)
                 interrupted = runs.list_runs()[-1]
                 self.assertEqual(interrupted.load_metadata()["status"], "incomplete")
-                resumed = pinn_gaussian.resume(interrupted.id)
+                main(["pinn", "resume", interrupted.id])
+                resumed = runs.get_run(interrupted.id)
                 self.assertEqual(resumed.id, interrupted.id)
                 self.assert_same(full, resumed)
                 with self.assertRaisesRegex(ValueError, "Only incomplete"):
@@ -271,36 +271,25 @@ class WorkflowsTest(unittest.TestCase):
         self.assertEqual(transferred.load_metadata()["parent_mode"], "init")
 
     def test_cli(self):
-        with patch.object(
-            sys,
-            "argv",
-            [
-                "scripts/gaussian.py",
-                "solver.time_end=0.01",
-                "recording.interval=0.01",
-                "grid.num_points=16",
-            ],
-        ):
-            runpy.run_path("scripts/gaussian.py", run_name="__main__")
+        main(["ssfm", "solve", "solver.time_end=0.01",
+              "recording.interval=0.01", "grid.num_points=16"])
+        self.assertEqual(runs.list_runs()[-1].load_metadata()["script"], "scripts/gaussian.py")
         config_path = self.root / "config.yaml"
         import yaml
 
         config_path.write_text(
             yaml.safe_dump(self.config(2).model_dump(mode="json")), encoding="utf-8"
         )
-        with patch.object(
-            sys,
-            "argv",
-            ["scripts/pinn_gaussian.py", "train", "--config", str(config_path)],
-        ):
-            runpy.run_path("scripts/pinn_gaussian.py", run_name="__main__")
+        main(["pinn", "train", "training.seed=17", "--config", str(config_path),
+              "training.log_every=2"])
         source = runs.list_runs()[-1]
+        self.assertEqual(source.load_metadata()["script"], "scripts/pinn_gaussian.py")
+        self.assertEqual(source.load_config(pinn_gaussian.PinnGaussianConfig).training.seed, 17)
         for command in (
             ["extend", source.id, "--steps", "1"],
             ["transfer", source.id, "training.iterations=1"],
         ):
-            with patch.object(sys, "argv", ["scripts/pinn_gaussian.py", *command]):
-                runpy.run_path("scripts/pinn_gaussian.py", run_name="__main__")
+            main(["pinn", *command])
         self.assertTrue(
             all(r.load_metadata()["status"] == "complete" for r in runs.list_runs())
         )

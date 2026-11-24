@@ -1,4 +1,3 @@
-import argparse
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TypeVar
@@ -38,23 +37,3 @@ def load_config(
                 raise ValueError(f"Expected a nested configuration for key: {key}")
         target[parts[-1]] = yaml.safe_load(value)
     return model.model_validate(values)
-
-
-def parse_config_args(
-    parser: argparse.ArgumentParser | None = None,
-) -> argparse.Namespace:
-    """Добавляет общие аргументы конфигурации и разбирает командную строку."""
-    if parser is None:
-        parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=Path)
-    parser.add_argument("overrides", nargs="*", metavar="key=value")
-    return parser.parse_args()
-
-
-def config_from_cli(model: type[C]) -> C:
-    parser = argparse.ArgumentParser()
-    args = parse_config_args(parser)
-    try:
-        return load_config(model, args.config, args.overrides)
-    except (ValueError, OSError, yaml.YAMLError) as error:
-        parser.error(str(error))
