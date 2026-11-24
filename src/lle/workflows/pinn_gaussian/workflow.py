@@ -38,18 +38,32 @@ def _record_runtime(run: Run) -> None:
     print(f"Устройство: {runtime['device']} ({runtime['device_name']})", flush=True)
 
 
-def _inputs(config: PinnGaussianConfig):
-    problem = config.to_problem()
+def _network(config: PinnGaussianConfig) -> torch.nn.Module:
     features = PeriodicFeatures(
-        problem.length, problem.time_end, config.network.spatial_harmonics
+        config.domain.length, config.domain.time_end, config.network.spatial_harmonics
     )
-    torch.manual_seed(config.training.seed)
-    network = build_periodic_network(
+    return build_periodic_network(
         features,
         hidden_layers=config.network.hidden_layers,
         hidden_width=config.network.hidden_width,
     )
-    return network, problem.equation, problem.domain, problem.initial
+
+
+def _inputs(config: PinnGaussianConfig):
+    problem = config.to_problem()
+    torch.manual_seed(config.training.seed)
+    return _network(config), problem.equation, problem.domain, problem.initial
+
+
+def load_network(source: Run | str) -> torch.nn.Module:
+    """Загружает обученную сеть на CPU для предсказания поля и оценки невязки."""
+    run = _source(source)
+    config = run.load_config(PinnGaussianConfig)
+    saved = torch.load(run.path / "model.pt", map_location="cpu", weights_only=True)
+    with torch.random.fork_rng(devices=[]), torch.device("cpu"):
+        network = _network(config)
+    network.load_state_dict(saved["model_state_dict"], assign=True)
+    return network.eval()
 
 
 def _keywords(run: Run, config: PinnGaussianConfig) -> solver.TrainingKeywords:

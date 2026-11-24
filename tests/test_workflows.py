@@ -142,6 +142,20 @@ class WorkflowsTest(unittest.TestCase):
         predicted = predict_evolution(model.net, theta=reference.theta, times=reference.times)
         np.testing.assert_array_equal(predicted.values, reference.values)
 
+    def test_load_network_matches_saved_field(self):
+        from lle.workflows.pinn_gaussian.workflow import load_network
+
+        run = pinn_gaussian.train_run(self.config(3))
+        reference = load_evolution(run.path)
+        rng = torch.get_rng_state()
+        for source in (run, run.id):
+            net = load_network(source)
+            self.assertFalse(net.training)
+            self.assertEqual(next(net.parameters()).device.type, "cpu")
+            predicted = predict_evolution(net, theta=reference.theta, times=reference.times)
+            np.testing.assert_array_equal(predicted.values, reference.values)
+        torch.testing.assert_close(torch.get_rng_state(), rng)
+
     def test_high_level_prediction_matches_run(self):
         config = self.config(3)
         from lle.pinn.model import build_periodic_network
