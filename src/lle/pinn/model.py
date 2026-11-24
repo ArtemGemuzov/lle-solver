@@ -13,7 +13,7 @@ from lle.physics.problem import LLEProblem
 from lle.pinn.features import PeriodicFeatures
 from lle.pinn.loss.causal import CausalTimePDE
 from lle.pinn.loss.relobralo import ReLoBRaLoTimePDE
-from lle.pinn.parameters import PinnLossConfig, PinnNetworkConfig
+from lle.pinn.parameters import LossParameters, NetworkParameters
 
 
 def build_network(
@@ -84,8 +84,8 @@ def predict_field(
 def build_model(
     problem: LLEProblem,
     *,
-    network: PinnNetworkConfig,
-    loss: PinnLossConfig,
+    network: torch.nn.Module | NetworkParameters,
+    loss: LossParameters,
     interior_points: int,
     initial_points: int,
     seed: int,
@@ -146,13 +146,28 @@ def build_model(
     else:
         data = dde.data.TimePDE(geometry, residual, conditions, **options)
     # Сохраняем порядок генерации точек и инициализации весов для воспроизводимости.
-    features = PeriodicFeatures(
-        problem.length, problem.time_end, network.spatial_harmonics
-    )
+    if isinstance(network, NetworkParameters):
+        features = PeriodicFeatures(
+            problem.length, problem.time_end, network.spatial_harmonics
+        )
+        network = build_periodic_network(
+            features,
+            hidden_layers=network.hidden_layers,
+            hidden_width=network.hidden_width,
+        )
+    if not hasattr(network, "regularizer"):
+        # DeepXDE читает атрибут regularizer и у обычных модулей PyTorch.
+        network.regularizer = None
+    return dde.Model(data, network)
+
+
+def build_periodic_network(
+    features: PeriodicFeatures, *, hidden_layers: int, hidden_width: int
+) -> FNN:
     net = build_network(
         input_size=features.output_size,
-        hidden_layers=network.hidden_layers,
-        hidden_width=network.hidden_width,
+        hidden_layers=hidden_layers,
+        hidden_width=hidden_width,
     )
     net.apply_feature_transform(features)
-    return dde.Model(data, net)
+    return net

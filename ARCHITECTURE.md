@@ -35,9 +35,10 @@ Run существует независимо от Experiment. Один Run мо
 
 | Кто импортирует | Разрешенные зависимости внутри `lle` |
 | --- | --- |
-| `physics`, `config` | Нет |
-| `numerics`, `pinn`, `storage`, `analysis`, `viz` | `physics` |
-| `runs` | `config` |
+| `physics`, `config`, `random_state` | Нет |
+| `numerics`, `storage`, `analysis`, `viz` | `physics` |
+| `pinn` | `physics`, `random_state` |
+| `runs` | `config`, `random_state` |
 | `workflows` | `config`, `physics`, `numerics`, `pinn`, `runs`, `storage` |
 
 Сценарии SSFM и PINN независимы друг от друга и используют общие параметры
@@ -89,6 +90,13 @@ pinn_field = load_evolution(run.path)
 завершенный запуск. CLI `scripts/gaussian.py` вызывает этот же сценарий.
 Для расчета в памяти `simulate(config)` возвращает `FieldEvolution`.
 
+`lle.numerics.ssfm.solve(scheme, grid, state, num_steps=...,
+step_size=..., record_every=...)` принимает готовую схему расщепления, сетку
+и начальный вектор поля. Результат содержит начальный кадр, кадры через
+`record_every` шагов и конечный кадр. Для продолжения можно передать
+`result[-1].values` на той же сетке. Времена нового участка начинаются с нуля.
+Стандартный `solve_strang_rk4` собирает схему Стрэнга с RK4 и вызывает `solve`.
+
 Операции PINN возвращают Run и сохраняют поле, модель, историю потерь и чекпоинт:
 
 - `train_run(config)` создает новый Run для обучения с нуля. Имя `train(config)` также поддерживается.
@@ -105,23 +113,47 @@ pinn_field = load_evolution(run.path)
 Оба гауссовых конфига предоставляют `to_problem()`. Результат
 `lle.physics.problem.LLEProblem` объединяет параметры уравнения, функцию
 начального комплексного поля от вектора theta, длину кольца и конец интервала.
-SSFM и PINN могут принять один экземпляр постановки. Например, используя
-`config` и `pinn_config` из примера выше:
+Для сравнения методов можно использовать постановку из примера выше.
 
 ```python
-from lle.numerics.ssfm import solve
-from lle.pinn.model import build_model
-from lle.pinn.training import predict_evolution, train_model
+from lle.numerics.ssfm import solve_strang_rk4
+from lle.pinn.features import PeriodicFeatures
+from lle.pinn.model import build_periodic_network
+from lle.pinn.solver import train, resume, extend, transfer
 
 problem = config.to_problem()
-reference = solve(problem, num_points=128, time_step=0.001, recording_interval=0.1)
-model = build_model(
-    problem, network=pinn_config.network, loss=pinn_config.loss,
-    interior_points=128, initial_points=32, seed=42,
-)
-history = train_model(model, pinn_config.training)
-prediction = predict_evolution(model.net, theta=reference.theta, times=reference.times)
+reference = solve_strang_rk4(problem, num_points=128, time_step=0.001, recording_interval=0.1)
+equation, domain, initial = problem.equation, problem.domain, problem.initial
+features = PeriodicFeatures(domain.length, domain.time_end, harmonics=4)
+net = build_periodic_network(features, hidden_layers=4, hidden_width=64)
+snapshots = []
+solution = train(net, equation, domain, initial, steps=2000,
+                 on_checkpoint=snapshots.append, checkpoint_every=1000)
+prediction = solution.predict(theta=reference.theta, times=reference.times)
+
+continued = resume(net, equation, domain, initial, snapshots[0], steps=2000)
+longer = extend(net, equation, domain, initial, continued.state, steps=100)
+
+next_net = build_periodic_network(features, hidden_layers=4, hidden_width=64)
+child = transfer(next_net, equation, domain, initial, longer.state, steps=100)
 ```
+
+Все четыре операции работают с переданной сетью PyTorch. Она принимает
+координаты (theta, t) и возвращает действительную и мнимую компоненты поля.
+Периодичность в примере обеспечивает преобразование входных координат.
+Обучение меняет веса этой сети на месте. Для независимого продолжения можно
+передать новый экземпляр той же архитектуры. Аргумент seed управляет выборкой
+и обучением; начальные веса определены при создании сети.
+
+В resume число steps задает общий бюджет, в extend число дополнительных шагов.
+Снимок содержит веса, Adam, точки, историю, счетчики и состояние генераторов.
+При переносе между разными нормировками времени периодической FNN передают
+исходные признаки через source_features. Workflow создает сеть и подставляет
+аргументы из конфигурации запуска.
+
+`resume` возвращает результат сразу, если снимок уже завершен.
+`extend` сохраняет состояние Adam и допускает фиксированный бюджет без расписания
+causal weighting. `transfer` начинает новый отсчет шагов с новым Adam и выборкой.
 
 `predict_evolution` возвращает комплексное поле на декартовом произведении
 заданных осей, сохраняя порядок координат и времен. Workflow строит регулярные
@@ -148,9 +180,9 @@ prediction = predict_evolution(model.net, theta=reference.theta, times=reference
 
 Опциональный `on_checkpoint(state)` получает независимый снимок каждые
 `checkpoint_every` шагов, при смене стадии и после завершения обучения.
-`train_run` вызывает `train_model`, передавая функции сохранения снимков и полей стадий. При продолжении
-`prepare_training` позволяет загрузить состояние между созданием Adam и
-началом оптимизации.
+`train_run` вызывает `lle.pinn.solver.train`, передавая функции сохранения
+снимков и полей стадий. При продолжении `lle.pinn.solver.resume` восстанавливает
+состояние между созданием Adam и началом оптимизации.
 
 `PinnTraining.state_dict()` возвращает независимый снимок состояния сети,
 Adam, точек, истории, адаптивных потерь, стадий и счётчиков.
@@ -186,7 +218,7 @@ PDE-точки на начальном срезе обновляются рав�
 `runs.checkpoint` упаковывает состояние, конфиг, версии библиотек и глобальные
 генераторы Python, NumPy и Torch, атомарно записывает файл и читает его обратно.
 Сценарий передает `save_training_checkpoint` из `outputs.py` в обучение, проверяет
-конфиги при `resume` и восстанавливает RNG после создания модели и загрузки состояния.
+конфиги при `resume`. Ядро восстанавливает RNG после создания модели и загрузки состояния.
 При `extend` сценарий формирует новый конфиг, сохраняя состояние оптимизатора.
 Поле `script` остаётся метаданными; инфраструктура не проверяет его при возобновлении.
 

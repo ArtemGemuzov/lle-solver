@@ -23,7 +23,7 @@ from lle.numerics.integrators import rk4_step
 from functools import partial
 from lle.numerics.lle import linear_operator, nonlinear_term
 from lle.numerics.split_schemes import StrangSplitStep
-from lle.numerics.ssfm import solve
+from lle.numerics.ssfm import solve_strang_rk4
 from lle.numerics.steps import FourierStep, IntegratorStep
 from lle.runs.checkpoint import load_checkpoint, save_checkpoint
 from lle.pinn.training import TrainingCheckpoint
@@ -38,13 +38,22 @@ from lle.pinn.model import (
     evaluate_residual,
     predict_field,
 )
-from lle.workflows.pinn_gaussian.workflow import _build_model
+from lle.pinn.parameters import LossParameters, NetworkParameters, TrainingParameters
+from lle.pinn.solver import train
 from lle.pinn.training import PinnTraining, configure_adam, predict_evolution, train_model
 from lle.runs import runs
 from lle.storage import load_evolution
 from lle.workflows import pinn_gaussian
 from lle.workflows.ssfm_gaussian.config import SsfmGaussianConfig
 from lle.workflows.ssfm_gaussian.workflow import run as run_ssfm, simulate
+
+
+def _build_model(config):
+    return build_model(
+        config.to_problem(), network=NetworkParameters(**config.network.model_dump()), loss=config.loss_parameters(),
+        interior_points=config.domain.interior_points, initial_points=config.domain.initial_points,
+        seed=config.training.seed,
+    )
 
 
 class WorkflowsTest(unittest.TestCase):
@@ -114,13 +123,13 @@ class WorkflowsTest(unittest.TestCase):
     def test_training_in_memory_matches_saved_run(self):
         config = self.config(5)
         model = build_model(
-            config.to_problem(), network=config.network, loss=config.loss,
+            config.to_problem(), network=NetworkParameters(**config.network.model_dump()), loss=config.loss_parameters(),
             interior_points=config.domain.interior_points, initial_points=config.domain.initial_points,
             seed=config.training.seed,
         )
         snapshots = []
         history = train_model(
-            model, config.training, checkpoint_every=2, on_checkpoint=snapshots.append
+            model, TrainingParameters(**config.training.model_dump()), checkpoint_every=2, on_checkpoint=snapshots.append
         )
         self.assertEqual(list(self.root.iterdir()), [])
         self.assertIs(history, model.losshistory)
@@ -133,6 +142,51 @@ class WorkflowsTest(unittest.TestCase):
         reference = load_evolution(run.path)
         predicted = predict_evolution(model.net, theta=reference.theta, times=reference.times)
         np.testing.assert_array_equal(predicted.values, reference.values)
+
+    def test_high_level_prediction_matches_run(self):
+        config = self.config(3)
+        from lle.pinn.model import build_periodic_network
+        problem = config.to_problem()
+        torch.manual_seed(42)
+        network = build_periodic_network(PeriodicFeatures(problem.length, problem.time_end, 2),
+                                         hidden_layers=1, hidden_width=8)
+        solution = train(network, problem.equation, problem.domain, problem.initial, steps=3,
+                         interior_points=8, initial_points=8, resample_every=2, log_every=1)
+        self.assertIs(solution.model.net, network)
+        self.assertEqual(list(self.root.iterdir()), [])
+        run = pinn_gaussian.train_run(config)
+        field = load_evolution(run.path)
+        for times in (field.times, field.times[::-1]):
+            predicted = solution.predict(theta=field.theta, times=times)
+            indices = np.searchsorted(field.times, times)
+            np.testing.assert_array_equal(predicted.values, field.values[indices])
+        saved = load_checkpoint(run.path / "checkpoint.pt")
+        np.testing.assert_array_equal(solution.history.loss_train, saved["history"]["loss_train"])
+
+    def test_core_continuation_from_memory(self):
+        from lle.pinn.solver import extend, resume, transfer
+
+        problem = LLEProblem(LLEParameters(1.5, 1.0, -0.1),
+                             lambda theta: np.full_like(theta, 0.5 - 0.5j, dtype=complex),
+                             length=3.0, time_end=0.02)
+        def inputs():
+            network = torch.nn.Sequential(torch.nn.Linear(2, 8), torch.nn.Tanh(), torch.nn.Linear(8, 2))
+            return network, problem.equation, problem.domain, problem.initial
+        options = dict(interior_points=8, initial_points=8, resample_every=2, log_every=1)
+        snapshots = []
+        full = train(*inputs(), steps=6, on_checkpoint=snapshots.append, checkpoint_every=3, **options)
+        source = snapshots[0]
+        theta, times = [-0.2, 0.1], [0.0, 0.02]
+        expected = full.predict(theta=theta, times=times).values
+        for result in (resume(*inputs(), state=source, steps=6, **options),
+                       extend(*inputs(), state=source, steps=3, **options)):
+            np.testing.assert_array_equal(result.predict(theta=theta, times=times).values, expected)
+            np.testing.assert_array_equal(result.history.loss_train, full.history.loss_train)
+        finished = resume(*inputs(), state=full.state, steps=6, **options)
+        np.testing.assert_array_equal(finished.history.steps, full.history.steps)
+        child = transfer(*inputs(), state=full.state, steps=2, **options)
+        self.assertEqual(child.state["train_state"]["step"], 2)
+        self.assertEqual(list(self.root.iterdir()), [])
 
     def test_extend_matches_uninterrupted(self):
         full = pinn_gaussian.train(self.config())
@@ -347,10 +401,9 @@ class WorkflowsTest(unittest.TestCase):
             length=3.0,
             time_end=0.02,
         )
-        reference = solve(problem, num_points=16, time_step=0.0001, recording_interval=0.01)
-        config = self.config()
+        reference = solve_strang_rk4(problem, num_points=16, time_step=0.0001, recording_interval=0.01)
         model = build_model(
-            problem, network=config.network, loss=config.loss, seed=42,
+            problem, network=NetworkParameters(), loss=LossParameters(), seed=42,
             interior_points=8, initial_points=8,
         )
         with torch.no_grad():
@@ -396,7 +449,7 @@ class WorkflowsTest(unittest.TestCase):
         torch.testing.assert_close(
             saved["model"]["linears.0.weight"], original, rtol=0, atol=0
         )
-        self.assertNotIn("rng", saved)
+        self.assertIn("rng", saved)
         self.assertNotIn("config", saved)
 
     def test_workflow_rejects_incompatible_operations(self):

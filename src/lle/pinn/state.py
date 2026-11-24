@@ -5,6 +5,8 @@ from copy import deepcopy
 import deepxde as dde
 import torch
 
+from lle.random_state import capture_rng_state, restore_rng_state
+
 DATA_FIELDS = (
     "train_x_all",
     "train_x_bc",
@@ -52,6 +54,7 @@ class TrainingState(dde.callbacks.Callback):
             raise FloatingPointError("Cannot export non-finite PINN weights")
         return deepcopy(
             {
+                "rng": capture_rng_state(),
                 "versions": {
                     "deepxde": dde.__version__,
                     "torch": str(torch.__version__),
@@ -80,14 +83,16 @@ class TrainingState(dde.callbacks.Callback):
         model = self.model
         device = next(model.net.parameters()).device
         model.net.load_state_dict(checkpoint["model"])
-        model.opt.load_state_dict(checkpoint["optimizer"])
+        model.opt.load_state_dict(deepcopy(checkpoint["optimizer"]))
         vars(model.train_state).update(deepcopy(checkpoint["train_state"]))
         vars(model.losshistory).update(deepcopy(checkpoint["history"]))
-        model.loss_weights = _to_device(checkpoint["loss_weights"], device)
+        model.loss_weights = _to_device(deepcopy(checkpoint["loss_weights"]), device)
         for key, value in deepcopy(checkpoint["data"]).items():
             setattr(model.data, key, value)
         if checkpoint["weighting"] is not None:
-            model.data.load_state_dict(_to_device(checkpoint["weighting"], device))
+            model.data.load_state_dict(
+                _to_device(deepcopy(checkpoint["weighting"]), device)
+            )
         if self.schedule is not None:
             self.schedule.load_state_dict(deepcopy(checkpoint["schedule"]))
         self.resampler.epochs_since_last_resample = checkpoint["resample_counter"]
@@ -107,6 +112,8 @@ class TrainingState(dde.callbacks.Callback):
             for key, value in vars(model.train_state).items()
             if key.startswith("best_")
         }
+        if "rng" in checkpoint:
+            restore_rng_state(checkpoint["rng"])
         self._restored = True
 
     def on_train_begin(self):

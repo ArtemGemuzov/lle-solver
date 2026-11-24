@@ -1,11 +1,12 @@
 """Атомарное хранение состояния и глобальных генераторов случайных чисел."""
 
 import os
-import random
 from pathlib import Path
 
 import numpy as np
 import torch
+
+from lle.random_state import capture_rng_state, restore_rng_state
 
 FORMAT_VERSION = 1
 
@@ -58,12 +59,7 @@ def load_checkpoint(path: Path) -> dict:
 
 
 def restore_rng(checkpoint: dict) -> None:
-    rng = checkpoint["rng"]
-    random.setstate(rng["python"])
-    np.random.set_state(rng["numpy"])
-    torch.set_rng_state(rng["torch"])
-    if rng["cuda"] and torch.cuda.is_available():
-        torch.cuda.set_rng_state_all(rng["cuda"])
+    restore_rng_state(checkpoint["rng"])
 
 
 def save_checkpoint(path: Path, state: dict, config: dict) -> None:
@@ -71,12 +67,7 @@ def save_checkpoint(path: Path, state: dict, config: dict) -> None:
         **state,
         "format_version": FORMAT_VERSION,
         "config": config,
-        "rng": {
-            "python": random.getstate(),
-            "numpy": np.random.get_state(),
-            "torch": torch.get_rng_state(),
-            "cuda": torch.cuda.get_rng_state_all() if torch.cuda.is_available() else [],
-        },
+        "rng": state["rng"] if "rng" in state else capture_rng_state(),
     }
     temporary = path.with_suffix(".tmp")
     try:

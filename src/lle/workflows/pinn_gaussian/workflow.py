@@ -4,13 +4,13 @@ import shutil
 from functools import partial
 from pathlib import Path
 
-import deepxde as dde
 import torch
 
+from lle.pinn import solver
 from lle.pinn.features import PeriodicFeatures
-from lle.pinn.model import build_model
-from lle.pinn.training import PinnTraining, prepare_training, train_model
-from lle.runs.checkpoint import load_checkpoint, restore_rng
+from lle.pinn.model import build_periodic_network
+from lle.pinn.parameters import RADParameters
+from lle.runs.checkpoint import load_checkpoint
 from lle.runs.runs import PROJECT_ROOT, Run, create_run, get_run, resume_run
 from lle.workflows.pinn_gaussian.config import PinnGaussianConfig
 
@@ -29,45 +29,48 @@ def _source(source: Run | str) -> Run:
     return get_run(source) if isinstance(source, str) else source
 
 
-def _build_model(config: PinnGaussianConfig) -> dde.Model:
-    return build_model(
-        config.to_problem(),
-        network=config.network,
-        loss=config.loss,
-        seed=config.training.seed,
-        interior_points=config.domain.interior_points,
-        initial_points=config.domain.initial_points,
-    )
-
-
-def _model_for_run(run: Run, config: PinnGaussianConfig) -> dde.Model:
+def _record_runtime(run: Run) -> None:
     runtime = training_runtime(torch.get_default_device())
     metadata = run.load_metadata()
     metadata["runtime"] = runtime
     run.save_metadata(metadata)
     print(f"Запуск: {run.id}", flush=True)
     print(f"Устройство: {runtime['device']} ({runtime['device_name']})", flush=True)
-    return _build_model(config)
 
 
-def _training_for_run(run: Run, config: PinnGaussianConfig) -> PinnTraining:
-    model = _model_for_run(run, config)
-    causal = config.loss.causal
-    return prepare_training(
-        model,
-        config.training,
-        rad=config.sampling.rad,
-        schedule=causal.schedule if causal else None,
-        on_stage_end=partial(save_stage, run, config, model),
+def _inputs(config: PinnGaussianConfig):
+    problem = config.to_problem()
+    features = PeriodicFeatures(
+        problem.length, problem.time_end, config.network.spatial_harmonics
     )
-
-
-def _fit(run: Run, config: PinnGaussianConfig, training: PinnTraining) -> None:
-    history = training.fit(
-        on_checkpoint=partial(save_training_checkpoint, run, config),
-        checkpoint_every=config.checkpoint.every_steps,
+    torch.manual_seed(config.training.seed)
+    network = build_periodic_network(
+        features,
+        hidden_layers=config.network.hidden_layers,
+        hidden_width=config.network.hidden_width,
     )
-    save_results(run, config, training.model, history)
+    return network, problem.equation, problem.domain, problem.initial
+
+
+def _keywords(run: Run, config: PinnGaussianConfig) -> solver.TrainingKeywords:
+    _record_runtime(run)
+    training = config.training
+    return {
+        "interior_points": config.domain.interior_points,
+        "initial_points": config.domain.initial_points,
+        "learning_rate": training.learning_rate,
+        "initial_weight": training.initial_weight,
+        "resample_every": training.resample_every,
+        "log_every": training.log_every,
+        "seed": training.seed,
+        "loss": config.loss_parameters(),
+        "rad": RADParameters(**config.sampling.rad.model_dump())
+        if config.sampling.rad
+        else None,
+        "on_stage_end": partial(save_stage, run, config),
+        "on_checkpoint": partial(save_training_checkpoint, run, config),
+        "checkpoint_every": config.checkpoint.every_steps,
+    }
 
 
 def clear_resumed_outputs(path: Path, completed_stages: int) -> None:
@@ -93,18 +96,10 @@ def train_run(
 ) -> Run:
     """Обучает новую модель и возвращает завершённый Run."""
     with create_run(config, script=script) as run:
-        model = _model_for_run(run, config)
-        causal = config.loss.causal
-        history = train_model(
-            model,
-            config.training,
-            rad=config.sampling.rad,
-            schedule=causal.schedule if causal else None,
-            on_stage_end=partial(save_stage, run, config, model),
-            on_checkpoint=partial(save_training_checkpoint, run, config),
-            checkpoint_every=config.checkpoint.every_steps,
+        solution = solver.train(
+            *_inputs(config), steps=config.training.iterations, **_keywords(run, config)
         )
-        save_results(run, config, model, history)
+        save_results(run, config, solution.model, solution.history)
     return run
 
 
@@ -118,12 +113,15 @@ def resume(source: Run | str) -> Run:
             raise ValueError(
                 "Checkpoint configuration differs from the run configuration"
             )
-        training = _training_for_run(run, config)
-        training.load_state_dict(saved)
-        restore_rng(saved)
-        schedule = training.schedule
-        clear_resumed_outputs(run.path, len(schedule.history) if schedule else 0)
-        _fit(run, config, training)
+        schedule = saved["schedule"]
+        clear_resumed_outputs(run.path, len(schedule["history"]) if schedule else 0)
+        solution = solver.resume(
+            *_inputs(config),
+            state=saved,
+            steps=config.training.iterations,
+            **_keywords(run, config),
+        )
+        save_results(run, config, solution.model, solution.history)
     return run
 
 
@@ -134,26 +132,21 @@ def extend(
     source = _source(source)
     parent = load_checkpoint(source.path / "checkpoint.pt")
     source_config = PinnGaussianConfig.model_validate(parent["config"])
-    if steps < 1:
-        raise ValueError("The number of extra steps must be positive")
-    causal = source_config.loss.causal
-    if causal is not None and causal.schedule is not None:
-        raise ValueError("Cannot extend training with loss.causal.schedule enabled")
+    budget = solver.extension_budget(parent, steps, source_config.loss_parameters())
     parameters = source_config.model_dump(mode="json")
-    parameters["training"]["iterations"] = parent["train_state"]["step"] + steps
+    parameters["training"]["iterations"] = budget
     config = PinnGaussianConfig.model_validate(parameters)
-    saved = {**parent, "config": config.model_dump(mode="json")}
     metadata = {
         "parent_run_id": source.id,
-        "parent_step": saved["train_state"]["step"],
+        "parent_step": parent["train_state"]["step"],
         "parent_mode": "extend",
     }
     with create_run(config, script=script, extra_metadata=metadata) as run:
-        training = _training_for_run(run, config)
-        training.load_state_dict(saved)
-        restore_rng(saved)
-        save_training_checkpoint(run, config, training.state_dict())
-        _fit(run, config, training)
+        save_training_checkpoint(run, config, parent)
+        solution = solver.extend(
+            *_inputs(config), state=parent, steps=steps, **_keywords(run, config)
+        )
+        save_results(run, config, solution.model, solution.history)
     return run
 
 
@@ -170,30 +163,28 @@ def transfer(
     parent = load_checkpoint(source.path / "checkpoint.pt")
     source_config = PinnGaussianConfig.model_validate(parent["config"])
     if source_config.network != config.network:
-        raise ValueError("Weight transfer requires matching network configurations")
+        raise ValueError("Weight transfer requires matching network architectures")
     if source_config.domain.length != config.domain.length:
-        raise ValueError(
-            "Weight transfer requires matching domain.length for the spatial harmonics"
-        )
-    source_features = PeriodicFeatures(
+        raise ValueError("Weight transfer requires matching domain.length")
+    features = PeriodicFeatures(
         source_config.domain.length,
         source_config.domain.time_end,
         source_config.network.spatial_harmonics,
     )
-    target_features = PeriodicFeatures(
-        config.domain.length, config.domain.time_end, config.network.spatial_harmonics
-    )
-    weights = source_features.transfer_weights(parent["model"], target_features)
     metadata = {
         "parent_run_id": source.id,
         "parent_step": parent["train_state"]["step"],
         "parent_mode": "init",
     }
-    del parent
     with create_run(config, script=script, extra_metadata=metadata) as run:
-        training = _training_for_run(run, config)
-        training.model.net.load_state_dict(weights)
-        _fit(run, config, training)
+        solution = solver.transfer(
+            *_inputs(config),
+            state=parent,
+            steps=config.training.iterations,
+            source_features=features,
+            **_keywords(run, config),
+        )
+        save_results(run, config, solution.model, solution.history)
     return run
 
 

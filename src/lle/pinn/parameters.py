@@ -1,71 +1,111 @@
 """Параметры построения и обучения PINN."""
 
-from typing import Annotated, Self
-
-from pydantic import BaseModel, Field, model_validator
-
-
-class _PinnSettings(
-    BaseModel,
-    extra="forbid",
-    strict=True,
-    frozen=True,
-    allow_inf_nan=False,
-    validate_default=True,
-):
-    pass
+from dataclasses import dataclass
+from math import isfinite
 
 
-class PinnNetworkConfig(_PinnSettings):
-    hidden_layers: int = Field(default=4, ge=1)
-    hidden_width: int = Field(default=64, ge=1)
-    spatial_harmonics: int = Field(default=4, ge=1)
+def _integer(name: str, value: int, minimum: int) -> None:
+    if type(value) is not int or value < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}")
 
 
-class PinnTrainingConfig(_PinnSettings):
-    iterations: int = Field(default=20_000, ge=1)
-    learning_rate: float = Field(default=0.001, gt=0)
-    initial_weight: float = Field(default=10.0, gt=0)
-    resample_every: int = Field(default=100, ge=1)
-    log_every: int = Field(default=100, ge=1)
-    seed: int = Field(default=42, ge=0, le=2**32 - 1)
+def _positive(name: str, value: float) -> None:
+    if not isfinite(value) or value <= 0:
+        raise ValueError(f"{name} must be finite and positive")
 
 
-class ReLoBRaLoConfig(_PinnSettings):
-    alpha: float = Field(default=0.999, ge=0, lt=1)
-    temperature: float = Field(default=0.1, gt=0)
-    lookback_probability: float = Field(default=0.001, ge=0, le=1)
+@dataclass(frozen=True)
+class NetworkParameters:
+    hidden_layers: int = 4
+    hidden_width: int = 64
+    spatial_harmonics: int = 4
+
+    def __post_init__(self) -> None:
+        _integer("hidden_layers", self.hidden_layers, 1)
+        _integer("hidden_width", self.hidden_width, 1)
+        _integer("spatial_harmonics", self.spatial_harmonics, 1)
 
 
-class CausalScheduleConfig(_PinnSettings):
-    epsilons: list[Annotated[float, Field(gt=0)]] = Field(
-        default_factory=lambda: [0.01, 0.1, 1.0, 10.0, 100.0],
-        min_length=2,
-    )
-    threshold: float = Field(default=0.99, gt=0, lt=1)
+@dataclass(frozen=True)
+class TrainingParameters:
+    iterations: int = 20_000
+    learning_rate: float = 0.001
+    initial_weight: float = 10.0
+    resample_every: int = 100
+    log_every: int = 100
+    seed: int = 42
+
+    def __post_init__(self) -> None:
+        _integer("iterations", self.iterations, 1)
+        _positive("learning_rate", self.learning_rate)
+        _positive("initial_weight", self.initial_weight)
+        _integer("resample_every", self.resample_every, 1)
+        _integer("log_every", self.log_every, 1)
+        _integer("seed", self.seed, 0)
+        if self.seed >= 2**32:
+            raise ValueError("seed must fit in 32 bits")
 
 
-class CausalConfig(_PinnSettings):
-    bands: int = Field(default=4, ge=2)
-    epsilon: float = Field(default=1.0, gt=0)
-    schedule: CausalScheduleConfig | None = None
+@dataclass(frozen=True)
+class ReLoBRaLoParameters:
+    alpha: float = 0.999
+    temperature: float = 0.1
+    lookback_probability: float = 0.001
+
+    def __post_init__(self) -> None:
+        _positive("temperature", self.temperature)
+        if not 0 <= self.alpha < 1 or not 0 <= self.lookback_probability <= 1:
+            raise ValueError("Invalid ReLoBRaLo weighting parameters")
 
 
-class PinnLossConfig(_PinnSettings):
-    relobralo: ReLoBRaLoConfig | None = None
-    causal: CausalConfig | None = None
+@dataclass(frozen=True)
+class CausalScheduleParameters:
+    epsilons: tuple[float, ...] = (0.01, 0.1, 1.0, 10.0, 100.0)
+    threshold: float = 0.99
 
-    @model_validator(mode="after")
-    def validate_weighting(self) -> Self:
+    def __post_init__(self) -> None:
+        if len(self.epsilons) < 2 or not 0 < self.threshold < 1:
+            raise ValueError("Invalid causal schedule length or threshold")
+        for epsilon in self.epsilons:
+            _positive("epsilon", epsilon)
+
+
+@dataclass(frozen=True)
+class CausalParameters:
+    bands: int = 4
+    epsilon: float = 1.0
+    schedule: CausalScheduleParameters | None = None
+
+    def __post_init__(self) -> None:
+        _integer("bands", self.bands, 2)
+        _positive("epsilon", self.epsilon)
+
+
+@dataclass(frozen=True)
+class LossParameters:
+    relobralo: ReLoBRaLoParameters | None = None
+    causal: CausalParameters | None = None
+
+    def __post_init__(self) -> None:
         if self.relobralo is not None and self.causal is not None:
             raise ValueError("Choose either ReLoBRaLo or causal weighting")
-        return self
 
 
-class RADConfig(_PinnSettings):
-    candidate_points: int = Field(default=131072, ge=1)
+@dataclass(frozen=True)
+class RADParameters:
+    candidate_points: int = 131072
     replace: bool = True
-    batch_size: int = Field(default=8192, ge=1)
-    power: float = Field(default=1.0, gt=0)
-    uniform_fraction: float = Field(default=0.5, ge=0, le=1)
-    warmup_steps: int = Field(default=5000, ge=0)
+    batch_size: int = 8192
+    power: float = 1.0
+    uniform_fraction: float = 0.5
+    warmup_steps: int = 5000
+
+    def __post_init__(self) -> None:
+        _integer("candidate_points", self.candidate_points, 1)
+        _integer("batch_size", self.batch_size, 1)
+        _integer("warmup_steps", self.warmup_steps, 0)
+        _positive("power", self.power)
+        if not isinstance(self.replace, bool):
+            raise ValueError("replace must be a boolean")
+        if not 0 <= self.uniform_fraction <= 1:
+            raise ValueError("uniform_fraction must lie between zero and one")

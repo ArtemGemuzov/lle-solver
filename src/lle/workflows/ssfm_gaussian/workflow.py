@@ -1,4 +1,4 @@
-from lle.numerics.ssfm import solve
+from lle.numerics.ssfm import solve_strang_rk4
 from lle.physics.fields import FieldEvolution
 from lle.runs.runs import PROJECT_ROOT, Run, create_run
 from lle.storage import save_evolution
@@ -7,7 +7,7 @@ from lle.workflows.ssfm_gaussian.config import SsfmGaussianConfig
 
 def simulate(p: SsfmGaussianConfig) -> FieldEvolution:
     """Вычисляет эволюцию гауссова импульса."""
-    return solve(
+    return solve_strang_rk4(
         p.to_problem(),
         num_points=p.grid.num_points,
         time_step=p.solver.time_step,

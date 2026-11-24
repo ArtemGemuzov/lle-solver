@@ -1,15 +1,15 @@
 from math import isclose, pi
-from typing import Self
+from typing import Annotated, Self
 
 from pydantic import Field, model_validator
 
 from lle.config import Config
 from lle.physics.problem import LLEProblem
 from lle.pinn.parameters import (
-    PinnLossConfig,
-    PinnNetworkConfig,
-    PinnTrainingConfig,
-    RADConfig,
+    CausalParameters,
+    CausalScheduleParameters,
+    LossParameters,
+    ReLoBRaLoParameters,
 )
 from lle.workflows.parameters import (
     GaussianPulseConfig,
@@ -17,6 +17,61 @@ from lle.workflows.parameters import (
     RecordingConfig,
     gaussian_problem,
 )
+
+
+class PinnNetworkConfig(Config):
+    hidden_layers: int = Field(default=4, ge=1)
+    hidden_width: int = Field(default=64, ge=1)
+    spatial_harmonics: int = Field(default=4, ge=1)
+
+
+class PinnTrainingConfig(Config):
+    iterations: int = Field(default=20_000, ge=1)
+    learning_rate: float = Field(default=0.001, gt=0)
+    initial_weight: float = Field(default=10.0, gt=0)
+    resample_every: int = Field(default=100, ge=1)
+    log_every: int = Field(default=100, ge=1)
+    seed: int = Field(default=42, ge=0, le=2**32 - 1)
+
+
+class ReLoBRaLoConfig(Config):
+    alpha: float = Field(default=0.999, ge=0, lt=1)
+    temperature: float = Field(default=0.1, gt=0)
+    lookback_probability: float = Field(default=0.001, ge=0, le=1)
+
+
+class CausalScheduleConfig(Config):
+    epsilons: list[Annotated[float, Field(gt=0)]] = Field(
+        default_factory=lambda: [0.01, 0.1, 1.0, 10.0, 100.0],
+        min_length=2,
+    )
+    threshold: float = Field(default=0.99, gt=0, lt=1)
+
+
+class CausalConfig(Config):
+    bands: int = Field(default=4, ge=2)
+    epsilon: float = Field(default=1.0, gt=0)
+    schedule: CausalScheduleConfig | None = None
+
+
+class PinnLossConfig(Config):
+    relobralo: ReLoBRaLoConfig | None = None
+    causal: CausalConfig | None = None
+
+    @model_validator(mode="after")
+    def validate_weighting(self) -> Self:
+        if self.relobralo is not None and self.causal is not None:
+            raise ValueError("Choose either ReLoBRaLo or causal weighting")
+        return self
+
+
+class RADConfig(Config):
+    candidate_points: int = Field(default=131072, ge=1)
+    replace: bool = True
+    batch_size: int = Field(default=8192, ge=1)
+    power: float = Field(default=1.0, gt=0)
+    uniform_fraction: float = Field(default=0.5, ge=0, le=1)
+    warmup_steps: int = Field(default=5000, ge=0)
 
 
 class PinnDomainConfig(Config):
@@ -57,17 +112,29 @@ class PinnGaussianConfig(Config):
             time_end=self.domain.time_end,
         )
 
-    @model_validator(mode="after")
-    def validate_sampling(self) -> Self:
-        rad = self.sampling.rad
-        if rad is not None:
-            if rad.candidate_points < self.domain.interior_points:
-                raise ValueError(
-                    "RAD candidate_points must be at least interior_points"
+    def loss_parameters(self) -> LossParameters:
+        causal = self.loss.causal
+        balancing = self.loss.relobralo
+        schedule = causal.schedule if causal else None
+        weighting = (
+            CausalParameters(
+                bands=causal.bands,
+                epsilon=causal.epsilon,
+                schedule=CausalScheduleParameters(
+                    tuple(schedule.epsilons), schedule.threshold
                 )
-            if self.loss.causal is not None or self.loss.relobralo is not None:
-                raise ValueError("RAD currently requires fixed loss weights")
-        return self
+                if schedule
+                else None,
+            )
+            if causal
+            else None
+        )
+        return LossParameters(
+            causal=weighting,
+            relobralo=ReLoBRaLoParameters(**balancing.model_dump())
+            if balancing
+            else None,
+        )
 
     @model_validator(mode="after")
     def validate_recording(self) -> Self:
@@ -81,11 +148,16 @@ class PinnGaussianConfig(Config):
         return self
 
     @model_validator(mode="after")
-    def validate_schedule(self) -> Self:
+    def validate_method(self) -> Self:
+        rad = self.sampling.rad
+        if rad and rad.candidate_points < self.domain.interior_points:
+            raise ValueError("RAD candidate_points must be at least interior_points")
+        if rad and (self.loss.causal or self.loss.relobralo):
+            raise ValueError("RAD currently requires fixed loss weights")
         causal = self.loss.causal
         if (
-            causal is not None
-            and causal.schedule is not None
+            causal
+            and causal.schedule
             and self.training.iterations < len(causal.schedule.epsilons)
         ):
             raise ValueError(

@@ -13,7 +13,11 @@ from lle.pinn.loss.causal import CausalTimePDE
 from lle.pinn.loss.relobralo import ReLoBRaLoTimePDE
 from lle.pinn.loss.schedule import CausalSchedule, CausalStage
 from lle.pinn.model import predict_field
-from lle.pinn.parameters import CausalScheduleConfig, PinnTrainingConfig, RADConfig
+from lle.pinn.parameters import (
+    CausalScheduleParameters,
+    RADParameters,
+    TrainingParameters,
+)
 from lle.pinn.sampling import RADSampler
 from lle.pinn.state import TrainingState
 
@@ -169,10 +173,10 @@ class TrainingCheckpoint(dde.callbacks.Callback):
 
 def prepare_training(
     model: dde.Model,
-    training: PinnTrainingConfig,
+    training: TrainingParameters,
     *,
-    rad: RADConfig | None = None,
-    schedule: CausalScheduleConfig | None = None,
+    rad: RADParameters | None = None,
+    schedule: CausalScheduleParameters | None = None,
     on_stage_end: Callable[[CausalStage], None] | None = None,
 ) -> PinnTraining:
     """Готовит Adam, выборку и состояние для обучения или восстановления."""
@@ -194,7 +198,12 @@ def prepare_training(
             length=float(geometry.geometry.r - geometry.geometry.l),
             time_end=float(geometry.timedomain.t1),
             seed=training.seed,
-            **rad.model_dump(),
+            candidate_points=rad.candidate_points,
+            batch_size=rad.batch_size,
+            replace=rad.replace,
+            power=rad.power,
+            uniform_fraction=rad.uniform_fraction,
+            warmup_steps=rad.warmup_steps,
         )
     configure_adam(
         model,
@@ -215,10 +224,10 @@ def prepare_training(
 
 def train_model(
     model: dde.Model,
-    training: PinnTrainingConfig,
+    training: TrainingParameters,
     *,
-    rad: RADConfig | None = None,
-    schedule: CausalScheduleConfig | None = None,
+    rad: RADParameters | None = None,
+    schedule: CausalScheduleParameters | None = None,
     on_stage_end: Callable[[CausalStage], None] | None = None,
     on_checkpoint: Callable[[dict], None] | None = None,
     checkpoint_every: int = 1000,

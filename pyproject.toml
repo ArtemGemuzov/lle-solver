@@ -86,6 +86,18 @@ source_modules = ["lle.pinn"]
 forbidden_modules = ["lle.runs", "lle.storage", "lle.workflows", "lle.config"]
 
 [[tool.importlinter.contracts]]
+name = "Training and checkpoint storage share random generator state"
+type = "protected"
+protected_modules = ["lle.random_state"]
+allowed_importers = ["lle.pinn", "lle.runs"]
+
+[[tool.importlinter.contracts]]
+name = "Computational core is independent of configuration models"
+type = "forbidden"
+source_modules = ["lle.physics", "lle.numerics", "lle.pinn"]
+forbidden_modules = ["lle.config", "lle.workflows", "pydantic", "yaml"]
+
+[[tool.importlinter.contracts]]
 name = "Physics, numerics and SSFM are independent of PINN libraries"
 type = "forbidden"
 source_modules = ["lle.physics", "lle.numerics", "lle.workflows.ssfm_gaussian"]
