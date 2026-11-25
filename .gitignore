@@ -9,3 +9,8 @@ __pycache__/
 /draft/
 
 **/results/
+
+/publications/**/build/
+/publications/**/figures/
+
+/publications/**/*.pdf

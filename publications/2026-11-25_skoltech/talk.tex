@@ -1,0 +1,127 @@
+% Сборка из каталога встречи: latexmk talk.tex
+\documentclass[aspectratio=169,11pt]{beamer}
+\usepackage{fontspec}
+\setsansfont{Arial}
+\setmainfont{Arial}
+\usepackage[russian]{babel}
+\usepackage{tikz,booktabs}
+\definecolor{ink}{HTML}{193745}
+\definecolor{sea}{HTML}{087B83}
+\definecolor{rust}{HTML}{B85726}
+\setbeamercolor{normal text}{fg=ink,bg=white}
+\setbeamercolor{frametitle}{fg=ink}
+\setbeamertemplate{navigation symbols}{}
+\setbeamerfont{frametitle}{size=\Large,series=\bfseries}
+\setbeamersize{text margin left=8mm,text margin right=8mm}
+\setbeamertemplate{footline}{\hfill{\color{sea}\scriptsize\insertframenumber}\hspace{8mm}\vspace{3mm}}
+\graphicspath{{figures/}}
+\newcommand{\lead}[1]{\textcolor{sea}{\textbf{#1}}}
+\begin{document}
+
+\begin{frame}
+{\small\color{sea} Рабочая встреча с коллегами из Сколтеха \hfill 25 ноября 2026 г.}
+\medskip
+
+{\Large\bfseries Эволюция гауссова импульса в резонаторе\\ и точность её воспроизведения методом PINN}
+\medskip
+
+\begin{columns}[c,onlytextwidth]
+\begin{column}{0.61\textwidth}
+\lead{Уравнение Лугиато--Лефевера}
+\[
+ \partial_t\psi=F-(1+i\delta)\psi-i\frac{\beta_2}{2}\partial^2_\theta\psi+i|\psi|^2\psi .
+\]
+На кольце длины $2\pi$ задаём импульс\\
+$\psi(\theta,0)=A\exp[-\theta^2/(2\sigma^2)]$.\\[1ex]
+$F=2,\quad\delta=3,\quad\beta_2=-0{,}1$.
+\end{column}
+\begin{column}{0.35\textwidth}
+\centering
+\begin{tikzpicture}[x=.71cm,y=1.14cm,font=\small]
+\coordinate (peak) at (0,1.6);
+\coordinate (width) at (1,{1.6*exp(-0.5)});
+\draw[->,gray] (-3,0)--(3,0) node[right] {$\theta$};
+\draw[->,gray] (0,0)--(0,2.05) node[above] {$|\psi_0|$};
+\draw[sea,thick,domain=-3:3,samples=121] plot(\x,{1.6*exp(-\x*\x/2)});
+\draw[gray,densely dashed] (-2.3,1.6)--(peak);
+\draw[<->,rust] (-2.3,0)--(-2.3,1.6) node[midway,left] {$A$};
+\draw[gray,densely dashed] (width)--(1,0);
+\draw[<->,rust] (0,-.18)--(1,-.18) node[midway,below] {$\sigma$};
+\fill[sea] (width) circle (1.5pt) node[above right,ink] {$A e^{-1/2}$};
+\end{tikzpicture}
+\end{column}
+\end{columns}
+\medskip
+Как амплитуда и ширина определяют исход? Насколько точно нейросеть воспроизводит формирование импульса?
+\end{frame}
+
+\begin{frame}{В 28 из 64 расчётов сформировался один пик}
+\centering\includegraphics[width=.94\linewidth]{outcomes.pdf}\par
+\raggedright\small
+На окне $80\le t\le100$ в 31 случае поле однородно, в 28 стационарно с одним пиком. Кольцами отмечены начальные условия для профилей справа.
+\end{frame}
+
+\begin{frame}{При накачке $F=2{,}2$ поле ещё меняется во всех 64 узлах}
+\small Фиксируем отстройку $\delta=3$. Для каждого значения накачки повторяем расчёт на той же сетке начальных импульсов и сравниваем поле на окне $80\le t\le100$.
+\medskip
+\centering\includegraphics[width=\linewidth]{pump-series.pdf}
+\end{frame}
+
+\begin{frame}{При отстройке $\delta=3{,}5$ один пик сохраняется в 15 узлах}
+\small Фиксируем накачку $F=2$. При $\delta=2{,}5$ все 64 решения ещё меняются на окне $80\le t\le100$. При $\delta=3{,}5$ все 64 удовлетворяют критерию стационарности.
+\medskip
+\centering\includegraphics[width=\linewidth]{detuning-series.pdf}
+\end{frame}
+
+\begin{frame}{Три из пяти переходных режимов пришли к одному пику}
+\small Пять начальных импульсов, для которых поле ещё менялось при $T=100$,
+прослежены до $T=200$ или $400$ при исходных $F=2$, $\delta=3$.\par\medskip
+\centering
+\begin{tabular}{rrrl}
+\toprule
+$A$ & $\sigma$ & $T$ & Состояние на последних 20 единицах времени\\
+\midrule
+2,4 & 0,480 & 200 & Один стационарный пик\\
+2,8 & 0,700 & 400 & Один стационарный пик\\
+3,2 & 0,700 & 400 & Один стационарный пик\\
+\addlinespace
+2,8 & 0,480 & 400 & Два пика, расстояние между ними меняется\\
+3,2 & 0,329 & 400 & Два пика, расстояние между ними меняется\\
+\bottomrule
+\end{tabular}
+\end{frame}
+
+\begin{frame}{Как меняется расстояние между пиками при $A=2{,}8$?}
+\centering\includegraphics[width=.94\linewidth,height=.80\textheight,keepaspectratio]{dynamics-a28.pdf}
+\end{frame}
+
+\begin{frame}{Слабые волны расходятся от центрального импульса}
+\centering\includegraphics[width=.94\linewidth]{waves.pdf}\par
+\raggedright\small
+Спектральный расчёт, $A=1{,}6$, $\sigma=0{,}329$.
+Справа показана $\partial_t(\arg\psi-\arg\psi_{\rm bg})$ в рад/ед.~$t$.
+Фон $\psi_{\rm bg}(t)$ получен при той же накачке из нулевого однородного поля.
+\end{frame}
+
+\begin{frame}{До $T=5$ максимальная ошибка поля составила 1,17\%}
+\centering\includegraphics[width=.97\linewidth]{pinn.pdf}\par
+\raggedright\small
+Одна PINN на $[0,5]$, $A=1{,}6$, $\sigma=0{,}329$. Обучение: 131\,072 точки невязки, 2 млн шагов Adam. Ошибка вычислена по комплексному полю относительно SSFM.
+\end{frame}
+
+\begin{frame}{Как точнее решить задачу с тем же числом точек?}
+Расчёт PINN до $T=5$ занял \lead{17 ч 15 мин} на RTX 4090 при 131\,072 точках невязки и 2 млн шагов. Можно ли лучше выбрать точки, в которых сеть проверяет уравнение?
+\medskip
+
+\begin{columns}[c,onlytextwidth]
+\begin{column}{.53\textwidth}
+\centering\includegraphics[width=\linewidth]{rad-peaks.pdf}
+\end{column}
+\begin{column}{.44\textwidth}
+\lead{Пример при $T=4$}\\[.4ex]
+\small В обоих запусках 8\,192 точки и 500 тыс. шагов. Каждые 100 шагов обновляем выборку. При RAD чаще выбираем точки с большой невязкой.\\[1ex]
+Максимальная ошибка поля при равномерной выборке составила 73,9\% за 71 мин, при RAD --- 2,8\% за 78 мин.
+\end{column}
+\end{columns}
+\end{frame}
+\end{document}
