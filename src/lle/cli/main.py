@@ -8,7 +8,8 @@ from pathlib import Path
 import yaml
 
 from lle.config import load_config
-from lle.runs.runs import get_run
+from lle.runs.git import Git
+from lle.runs.runs import PROJECT_ROOT, get_run
 from lle.workflows.pinn_gaussian.config import PinnGaussianConfig
 from lle.workflows.ssfm_gaussian.config import SsfmGaussianConfig
 
@@ -85,6 +86,7 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = command.parse_intermixed_args(arguments)
     if action == "extend" and args.steps < 1:
         command.error("--steps must be positive")
+    Git.require_clean(PROJECT_ROOT)
     try:
         _execute(method, action, args)
     except (ValueError, FileNotFoundError, yaml.YAMLError) as error:

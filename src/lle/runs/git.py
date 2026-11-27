@@ -25,3 +25,8 @@ class Git:
                 cwd=cwd,
             )
         )
+
+    @staticmethod
+    def require_clean(cwd: Path) -> None:
+        if Git.is_dirty(cwd):
+            raise RuntimeError("Git working tree must be clean")
