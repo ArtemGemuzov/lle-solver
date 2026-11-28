@@ -6,5 +6,7 @@
 4. [Длительная эволюция при изменённых параметрах](04_equation-long-time-dynamics/long-time-dynamics.ipynb)
 5. [PINN для односолитонного режима](05_pinn-single-soliton/single-soliton-pinn.ipynb)
 6. [Адаптивное семплирование RAD для PINN](06_pinn-rad-sampling/pinn-rad-sampling.ipynb)
+7. [Число пространственных гармоник при обучении PINN](07_pinn-spatial-harmonics/pinn-spatial-harmonics.ipynb)
+8. [Численная проверка модели Паскуази](08_pasquazi-validation/pasquazi-validation.ipynb)
 
 К эксперименту 5: [перенос PINN на другой временной интервал](05_pinn-single-soliton/time-transfer.md) — математический вывод преобразования весов, сохраняющего предсказание комплексного поля при смене нормировки времени.
