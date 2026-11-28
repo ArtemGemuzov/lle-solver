@@ -1,4 +1,4 @@
-"""Запуск из корня проекта: lle ssfm solve solver.time_end=1.0"""
+"""Пример из корня проекта: lle pasquazi solve equation.n=5 --allow-dirty"""
 
 import argparse
 import sys
@@ -20,6 +20,14 @@ def _config_args(parser: argparse.ArgumentParser) -> None:
 
 
 def _execute(method: str, action: str, args: argparse.Namespace) -> None:
+    if method == "pasquazi":
+        from lle.workflows.pasquazi.config import PasquaziConfig
+        from lle.workflows.pasquazi.workflow import run as run_pasquazi
+
+        result = run_pasquazi(load_config(PasquaziConfig, args.config, args.overrides))
+        print(f"Run: {result.id}")
+        return
+
     if method == "ssfm":
         from lle.workflows.ssfm_gaussian.workflow import run
 
@@ -57,6 +65,16 @@ def main(argv: Sequence[str] | None = None) -> None:
         required=True
     )
     solve = ssfm.add_parser("solve", help="Вычислить эволюцию поля")
+    pasquazi = methods.add_parser(
+        "pasquazi", help="Модель связанных резонаторов"
+    ).add_subparsers(required=True)
+    pasquazi_solve = pasquazi.add_parser("solve", help="Вычислить поля кольца и петли")
+    for command in (solve, pasquazi_solve):
+        command.add_argument(
+            "--allow-dirty",
+            action="store_true",
+            help="Разрешить расчет с незакоммиченными изменениями",
+        )
     train = pinn.add_parser("train", help="Обучить модель с нуля")
     resume = pinn.add_parser("resume", help="Возобновить прерванный запуск")
     extend = pinn.add_parser("extend", help="Добавить шаги оптимизации")
@@ -65,14 +83,14 @@ def main(argv: Sequence[str] | None = None) -> None:
         command.description = "Начальное поле: гауссов импульс."
     for command in (resume, extend, transfer):
         command.add_argument("run_id", metavar="RUN_ID")
-    for command in (solve, train, transfer):
+    for command in (solve, pasquazi_solve, train, transfer):
         _config_args(command)
     extend.add_argument(
         "--steps", required=True, type=int, help="Число дополнительных шагов Adam"
     )
 
     tokens = list(sys.argv[1:] if argv is None else argv)
-    actions = {"ssfm": ssfm, "pinn": pinn}
+    actions = {"ssfm": ssfm, "pasquazi": pasquazi, "pinn": pinn}
     if (
         len(tokens) < 2
         or tokens[0] not in actions
@@ -86,7 +104,8 @@ def main(argv: Sequence[str] | None = None) -> None:
     args = command.parse_intermixed_args(arguments)
     if action == "extend" and args.steps < 1:
         command.error("--steps must be positive")
-    Git.require_clean(PROJECT_ROOT)
+    if not getattr(args, "allow_dirty", False):
+        Git.require_clean(PROJECT_ROOT)
     try:
         _execute(method, action, args)
     except (ValueError, FileNotFoundError, yaml.YAMLError) as error:

@@ -90,9 +90,9 @@ protected_modules = ["lle.analysis", "lle.viz", "lle.cli"]
 allowed_importers = []
 
 [[tool.importlinter.contracts]]
-name = "SSFM and PINN workflows are independent"
+name = "Numerical and PINN workflows are independent"
 type = "independence"
-modules = ["lle.workflows.ssfm_gaussian", "lle.workflows.pinn_gaussian"]
+modules = ["lle.workflows.ssfm_gaussian", "lle.workflows.pinn_gaussian", "lle.workflows.pasquazi"]
 
 [[tool.importlinter.contracts]]
 name = "In-memory PINN operations are independent of run workflows and storage"
@@ -115,7 +115,7 @@ forbidden_modules = ["lle.config", "lle.workflows", "pydantic", "yaml"]
 [[tool.importlinter.contracts]]
 name = "Physics, numerics and SSFM are independent of PINN libraries"
 type = "forbidden"
-source_modules = ["lle.physics", "lle.numerics", "lle.workflows.ssfm_gaussian"]
+source_modules = ["lle.physics", "lle.numerics", "lle.workflows.ssfm_gaussian", "lle.workflows.pasquazi"]
 forbidden_modules = ["deepxde", "torch"]
 
 [tool.uv]
